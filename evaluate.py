@@ -52,7 +52,7 @@ def evaluate():
     ).to(device)
 
     if os.path.exists(args.checkpoint):
-        checkpoint = torch.load(args.checkpoint, map_location=device)
+        checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         stats = checkpoint.get('stats', test_dataset.stats)
         print(f"Loaded weights from {args.checkpoint} (Epoch: {checkpoint.get('epoch', 'N/A')})")

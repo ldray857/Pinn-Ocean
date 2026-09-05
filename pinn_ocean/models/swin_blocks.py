@@ -209,9 +209,41 @@ class SwinTransformerBlock(nn.Module):
             attn_mask = None
 
         self.register_buffer("attn_mask", attn_mask)
+        self._mask_cache = {}
 
-    def forward(self, x):
-        H, W = self.input_resolution
+    def get_attn_mask(self, H, W, device):
+        if self.shift_size == 0:
+            return None
+        key = (H, W, str(device))
+        if key in self._mask_cache:
+            return self._mask_cache[key]
+
+        img_mask = torch.zeros((1, H, W, 1), device=device)
+        h_slices = (slice(0, -self.window_size),
+                    slice(-self.window_size, -self.shift_size),
+                    slice(-self.shift_size, None))
+        w_slices = (slice(0, -self.window_size),
+                    slice(-self.window_size, -self.shift_size),
+                    slice(-self.shift_size, None))
+        cnt = 0
+        for h in h_slices:
+            for w in w_slices:
+                img_mask[:, h, w, :] = cnt
+                cnt += 1
+
+        mask_windows = window_partition(img_mask, self.window_size)
+        mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
+        attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
+        attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
+        self._mask_cache[key] = attn_mask
+        return attn_mask
+
+    def forward(self, x, input_resolution=None):
+        if input_resolution is not None:
+            H, W = input_resolution
+        else:
+            H, W = self.input_resolution
+
         B, L, C = x.shape
         assert L == H * W, f"Input feature size ({L}) does not match resolution ({H}*{W})"
 
@@ -219,28 +251,42 @@ class SwinTransformerBlock(nn.Module):
         x = self.norm1(x)
         x = x.view(B, H, W, C)
 
+        # Pad feature map to multiples of window size
+        pad_r = (self.window_size - W % self.window_size) % self.window_size
+        pad_b = (self.window_size - H % self.window_size) % self.window_size
+        if pad_r > 0 or pad_b > 0:
+            x = F.pad(x, (0, 0, 0, pad_r, 0, pad_b))
+        _, H_pad, W_pad, _ = x.shape
+
         # Cyclic shift
         if self.shift_size > 0:
             shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+            attn_mask = self.get_attn_mask(H_pad, W_pad, x.device)
         else:
             shifted_x = x
+            attn_mask = None
 
         # Partition windows
         x_windows = window_partition(shifted_x, self.window_size)
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)
 
         # W-MSA / SW-MSA
-        attn_windows = self.attn(x_windows, mask=self.attn_mask)
+        attn_windows = self.attn(x_windows, mask=attn_mask)
 
         # Merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
-        shifted_x = window_reverse(attn_windows, self.window_size, H, W)
+        shifted_x = window_reverse(attn_windows, self.window_size, H_pad, W_pad)
 
         # Reverse cyclic shift
         if self.shift_size > 0:
             x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
         else:
             x = shifted_x
+
+        # Unpad back to original spatial resolution
+        if pad_r > 0 or pad_b > 0:
+            x = x[:, :H, :W, :].contiguous()
+
         x = x.view(B, H * W, C)
 
         # FFN
