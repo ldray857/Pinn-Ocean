@@ -75,24 +75,48 @@ flowchart TD
 ```
 
 ### 2.1 Forward Mapping Formulation
+
 The model establishes a continuous mapping function from surface dynamics and continuous vertical depth to 3-D thermohaline properties:
-$$\left[\hat{T}, \hat{S}\right] = f_\theta\left(\text{SST}, \text{SLA}, \text{SSS}, \text{SSW}_U, \text{SSW}_V, \text{Lon}, \text{Lat}, \text{Month}, z\right)$$
+
+$$
+[\hat{T}, \hat{S}] = f_\theta(\text{SST}, \text{SLA}, \text{SSS}, \text{SSW}_U, \text{SSW}_V, \text{Lon}, \text{Lat}, \text{Month}, z)
+$$
+
 where $z \in [0, 1000\text{ m}]$ is the explicit continuous depth coordinate.
 
 ### 2.2 Shifted Window Attention (Swin-Unet)
+
 Spatial tokens are processed using alternating Window Multi-Head Self-Attention (W-MSA) and Shifted Window Multi-Head Self-Attention (SW-MSA):
-$$\text{Attention}(Q, K, V) = \text{Softmax}\left(\frac{QK^T}{\sqrt{d}} + B\right) V$$
+
+$$
+\text{Attention}(Q, K, V) = \text{Softmax}\left(\frac{QK^T}{\sqrt{d}} + B\right) V
+$$
+
 where $B$ is the learnable relative position bias matrix.
 
 ### 2.3 Domain Physics Constraints
-1. **Vertical Temperature Monotonicity Constraint** ($\mathcal{L}_{\mathrm{phy}, T}$):
-   $$\mathcal{L}_{\mathrm{phy}, T} = \frac{1}{N} \sum_{i=1}^N \operatorname{ReLU}\left(\frac{\partial \hat{T}_i}{\partial z} + \epsilon\right)$$
-2. **TEOS-10 Stratification Stability Constraint** ($\mathcal{L}_{\mathrm{phy}, \rho}$):
-   Preventing unphysical density inversions based on the in-situ density $\hat{\rho} = f_{\mathrm{TEOS\text{-}10}}(\hat{S}, \hat{T}, P)$:
-   $$\mathcal{L}_{\mathrm{phy}, \rho} = \frac{1}{N} \sum_{i=1}^N \operatorname{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)$$
-3. **Adaptive Multi-Objective Loss Balancing** ($\mathcal{L}_{\mathrm{total}}$):
-   $$\mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2$$
-   where $\omega_1, \omega_2$ are learnable dual parameters that eliminate the need for manual hyperparameter tuning.
+
+**Vertical Temperature Monotonicity Constraint** ($\mathcal{L}_{\mathrm{phy}, T}$):
+
+$$
+\mathcal{L}_{\mathrm{phy}, T} = \frac{1}{N} \sum_{i=1}^N \operatorname{ReLU}\left(\frac{\partial \hat{T}_i}{\partial z} + \epsilon\right)
+$$
+
+**TEOS-10 Stratification Stability Constraint** ($\mathcal{L}_{\mathrm{phy}, \rho}$):
+
+Preventing unphysical density inversions based on the in-situ density $\hat{\rho} = f_{\mathrm{TEOS\text{-}10}}(\hat{S}, \hat{T}, P)$:
+
+$$
+\mathcal{L}_{\mathrm{phy}, \rho} = \frac{1}{N} \sum_{i=1}^N \operatorname{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)
+$$
+
+**Adaptive Multi-Objective Loss Balancing** ($\mathcal{L}_{\mathrm{total}}$):
+
+$$
+\mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2
+$$
+
+where $\omega_1, \omega_2$ are learnable dual parameters that eliminate the need for manual hyperparameter tuning.
 
 ---
 
