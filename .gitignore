@@ -1,0 +1,71 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyTorch checkpoints and models
+*.pt
+*.pth
+*.bin
+*.onnx
+
+# Data files
+*.nc
+*.nc4
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.csv
+*.tsv
+data/
+datasets/
+
+# Logs and outputs
+runs/
+logs/
+results/
+*.log
+wandb/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Outputs / Scratch
+scratch/
+test_output/
