@@ -99,7 +99,7 @@ where $B$ is the learnable relative position bias matrix.
 **Vertical Temperature Monotonicity Constraint** ($\mathcal{L}_{\mathrm{phy}, T}$):
 
 $$
-\mathcal{L}_{\mathrm{phy}, T} = \frac{1}{N} \sum_{i=1}^N \operatorname{ReLU}\left(\frac{\partial \hat{T}_i}{\partial z} + \epsilon\right)
+\mathcal{L}_{\mathrm{phy}, T} = \frac{1}{N} \sum_{i=1}^N \mathrm{ReLU}\left(\frac{\partial \hat{T}_i}{\partial z} + \epsilon\right)
 $$
 
 **TEOS-10 Stratification Stability Constraint** ($\mathcal{L}_{\mathrm{phy}, \rho}$):
@@ -107,7 +107,7 @@ $$
 Preventing unphysical density inversions based on the in-situ density $\hat{\rho} = f_{\mathrm{TEOS\text{-}10}}(\hat{S}, \hat{T}, P)$:
 
 $$
-\mathcal{L}_{\mathrm{phy}, \rho} = \frac{1}{N} \sum_{i=1}^N \operatorname{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)
+\mathcal{L}_{\mathrm{phy}, \rho} = \frac{1}{N} \sum_{i=1}^N \mathrm{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)
 $$
 
 **Adaptive Multi-Objective Loss Balancing** ($\mathcal{L}_{\mathrm{total}}$):
