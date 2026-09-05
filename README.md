@@ -85,13 +85,13 @@ $$\text{Attention}(Q, K, V) = \text{Softmax}\left(\frac{QK^T}{\sqrt{d}} + B\righ
 where $B$ is the learnable relative position bias matrix.
 
 ### 2.3 Domain Physics Constraints
-1. **Vertical Temperature Monotonicity Constraint ($\mathcal{L}_{\text{Phy\_T}}$)**:
-   $$\mathcal{L}_{\text{Phy\_T}} = \frac{1}{N} \sum_{i=1}^N \text{ReLU}\left(\frac{\partial \hat{T}_i}{\partial z} + \epsilon\right)$$
-2. **TEOS-10 Stratification Stability Constraint ($\mathcal{L}_{\text{Phy\_\rho}}$)**:
-   Preventing unphysical density inversions based on the in-situ density $\hat{\rho} = f_{\text{TEOS-10}}(\hat{S}, \hat{T}, P)$:
-   $$\mathcal{L}_{\text{Phy\_\rho}} = \frac{1}{N} \sum_{i=1}^N \text{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)$$
-3. **Adaptive Multi-Objective Loss Balancing**:
-   $$\mathcal{L}_{\text{Total}} = \exp(-\omega_1) \mathcal{L}_{\text{Data}} + \omega_1 + \exp(\omega_2) \mathcal{L}_{\text{Phy}} + \omega_2$$
+1. **Vertical Temperature Monotonicity Constraint** ($\mathcal{L}_{\mathrm{phy}, T}$):
+   $$\mathcal{L}_{\mathrm{phy}, T} = \frac{1}{N} \sum_{i=1}^N \operatorname{ReLU}\left(\frac{\partial \hat{T}_i}{\partial z} + \epsilon\right)$$
+2. **TEOS-10 Stratification Stability Constraint** ($\mathcal{L}_{\mathrm{phy}, \rho}$):
+   Preventing unphysical density inversions based on the in-situ density $\hat{\rho} = f_{\mathrm{TEOS\text{-}10}}(\hat{S}, \hat{T}, P)$:
+   $$\mathcal{L}_{\mathrm{phy}, \rho} = \frac{1}{N} \sum_{i=1}^N \operatorname{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)$$
+3. **Adaptive Multi-Objective Loss Balancing** ($\mathcal{L}_{\mathrm{total}}$):
+   $$\mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2$$
    where $\omega_1, \omega_2$ are learnable dual parameters that eliminate the need for manual hyperparameter tuning.
 
 ---

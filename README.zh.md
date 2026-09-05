@@ -85,14 +85,14 @@ $$\text{Attention}(Q, K, V) = \text{Softmax}\left(\frac{QK^T}{\sqrt{d}} + B\righ
 其中 $B$ 为相对位置偏置矩阵，使得模型能够在大洋尺度下高效建模长距离空间遥相关。
 
 ### 2.3 物理先验约束损失系统
-1. **温度垂直单调递减约束 ($\mathcal{L}_{\text{Phy\_T}}$)**：
-   $$\mathcal{L}_{\text{Phy\_T}} = \frac{1}{N} \sum_{i=1}^N \text{ReLU}\left(\frac{\partial \hat{T}_i}{\partial z} + \epsilon\right)$$
-2. **TEOS-10 层结稳定性与防密度倒置约束 ($\mathcal{L}_{\text{Phy\_\rho}}$)**：
-   基于海水状态方程 $\hat{\rho} = f_{\text{TEOS-10}}(\hat{S}, \hat{T}, P)$，惩罚违背静力平衡的密度倒置：
-   $$\mathcal{L}_{\text{Phy\_\rho}} = \frac{1}{N} \sum_{i=1}^N \text{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)$$
-3. **自适应多目标联合优化 (Adaptive Multi-Objective Loss)**：
+1. **温度垂直单调递减约束**（$\mathcal{L}_{\mathrm{phy}, T}$）：
+   $$\mathcal{L}_{\mathrm{phy}, T} = \frac{1}{N} \sum_{i=1}^N \operatorname{ReLU}\left(\frac{\partial \hat{T}_i}{\partial z} + \epsilon\right)$$
+2. **TEOS-10 层结稳定性与防密度倒置约束**（$\mathcal{L}_{\mathrm{phy}, \rho}$）：
+   基于海水状态方程 $\hat{\rho} = f_{\mathrm{TEOS\text{-}10}}(\hat{S}, \hat{T}, P)$，惩罚违背静力平衡的密度倒置：
+   $$\mathcal{L}_{\mathrm{phy}, \rho} = \frac{1}{N} \sum_{i=1}^N \operatorname{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)$$
+3. **自适应多目标联合优化**（$\mathcal{L}_{\mathrm{total}}$）：
    引入同方差不确定性对偶变量 $\omega_1, \omega_2$，在训练中实现数据驱动项与物理约束项的动态平衡：
-   $$\mathcal{L}_{\text{Total}} = \exp(-\omega_1) \mathcal{L}_{\text{Data}} + \omega_1 + \exp(\omega_2) \mathcal{L}_{\text{Phy}} + \omega_2$$
+   $$\mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2$$
 
 ---
 
