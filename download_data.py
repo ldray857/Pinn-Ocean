@@ -66,13 +66,6 @@ DATASET_IDS = {
         "variables": ["eastward_wind", "northward_wind"],
         "filename": "pacific_wind_2013_2021.nc",
         "description": "Sea Surface Wind Vectors U/V (Scatterometer & Model Monthly L4)"
-    },
-    # 6. In-situ Argo Float Temperature and Salinity Profiles (CORA Delayed Mode 013_001)
-    "argo": {
-        "dataset_id": "cmems_obs-ins_glo_phy-temp-sal_my_cora_irr",
-        "variables": ["TEMP", "PSAL", "PRES"],
-        "filename": "pacific_argo_cora_2013_2021.nc",
-        "description": "In-situ Argo Temperature & Salinity Discrete Profiles (CORA 013_001)"
     }
 }
 
@@ -84,7 +77,7 @@ def parse_args():
     parser.add_argument("--output_dir", type=str, default="data",
                         help="Directory to save downloaded NetCDF files (default: data)")
     parser.add_argument("--targets", nargs="+", default=["sla", "glorys_3d"],
-                        choices=["all", "sla", "glorys_3d", "sst", "sss", "wind", "argo"],
+                        choices=["all", "sla", "glorys_3d", "sst", "sss", "wind"],
                         help="Datasets to download. 'sla' and 'glorys_3d' are core required datasets.")
     parser.add_argument("--min_lon", type=float, default=DEFAULT_MIN_LON,
                         help=f"Minimum longitude in degrees east (default: {DEFAULT_MIN_LON})")

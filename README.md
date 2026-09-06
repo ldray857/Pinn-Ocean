@@ -14,79 +14,122 @@
 
 Reconstructing three-dimensional (3-D) ocean temperature and salinity (thermohaline) fields from two-dimensional (2-D) satellite surface observations is critical for climate prediction (e.g., AMOC, ENSO), ocean acoustic propagation, and maritime security. While satellite altimetry and radiometry provide high-frequency, basin-wide sea surface measurements (such as Sea Level Anomaly [SLA] and Sea Surface Temperature [SST]), direct subsurface observation networks (e.g., Argo profiling floats) remain sparse and intermittent.
 
-Traditional deep learning approaches rely on purely data-driven black-box architectures (e.g., 2-D CNNs), which often suffer from:
-1. **Limited Receptive Fields**: Difficulties in capturing multiscale ocean teleconnections and mesoscale eddy interactions.
-2. **Physical Paradoxes**: Non-physical predictions in unobserved subsurface zones, most notably abnormal thermal inversions and catastrophic **density inversions** (lighter seawater trapped beneath denser layers).
-3. **Finite Difference Truncation Errors**: Accumulation of errors when stacking discrete layers.
+Traditional deep learning approaches rely on purely data-driven black-box architectures (e.g., 2-D CNNs), which often suffer from limited receptive fields, non-physical predictions (such as density inversions and abnormal thermal inversions), and finite difference truncation errors across discrete layers.
 
-**Pinn-Ocean** solves these limitations by coupling a **Shifted Window Self-Attention (Swin Transformer)** spatial backbone with a **Physics-Informed Neural Network (PINN)** continuous coordinate decoder. By integrating the international standard **TEOS-10 equation of state** directly into the loss function via analytical automatic differentiation (`autograd`), Pinn-Ocean reconstructs high-fidelity 3-D thermohaline structures that strictly obey fundamental hydrostatic and thermodynamic principles.
+Pinn-Ocean addresses these challenges by coupling a Swin Transformer spatial backbone with a Physics-Informed Neural Network (PINN) continuous coordinate decoder. By integrating the TEOS-10 equation of state directly into the loss function via PyTorch autograd, Pinn-Ocean reconstructs continuous 3-D thermohaline fields constrained by hydrostatic and thermodynamic principles.
 
 ---
 
-## 2. Key Architecture & Methodology
+## 2. Training Data Sources
+
+The dataset is sourced from the Copernicus Marine Service (CMEMS) and the International Argo Program.
+
+### 2.1 Study Area and Time Horizon
+- Spatial range: Northwest Pacific (145°E–165°E, 30°N–40°N), depth 0–1000m. Open ocean without land cover.
+- Time range: January 2013 to December 2021 (monthly mean, 108 months).
+  - Training set: 2013–2018 (72 months)
+  - Validation set: 2019–2020 (24 months)
+  - Test set: 2021 (12 months)
+
+### 2.2 Dataset Inventory
+
+| Variable | Dataset / Source | Resolution | Depth | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| SLA (Sea Level Anomaly) | cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1M-m | 0.125° | Surface | Input feature |
+| SST (Sea Surface Temperature) | METOFFICE-GLO-SST-L4-REP-OBS-SST (OSTIA) | 0.05° | Surface | Input feature |
+| SSS (Sea Surface Salinity) | cmems_obs-mob_glo_phy-sal_my_multi-oi_P7D-c | 0.25° | Surface | Input feature |
+| Wind U/V (Scatterometer Wind) | cmems_obs-wind_glo_phy_my_l4_P1M | 0.25° | Surface | Input feature |
+| Lon / Lat / Month | Coordinate grids & cyclic month encoding | Grid-aligned | Surface | Input feature |
+| Potential temp & salinity (thetao, so) | cmems_mod_glo_phy_my_0.083deg_P1M-m (GLORYS12V1) | 1/12° (~0.083°) | 0–1000m (25 levels) | Training target |
+| In-situ T/S profiles | International Argo Program / China Argo Centre | Profiles | 0–1000m | Independent test |
+
+---
+
+## 3. Key Architecture & Methodology
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '16px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
 flowchart TD
-    subgraph Inputs["1. Multi-Source Surface Forcing (8 Channels)"]
-        SST["SST (Sea Surface Temp)"]
-        SLA["SLA (Sea Level Anomaly)"]
-        SSS["SSS (Sea Surface Salinity)"]
-        Winds["Wind U / Wind V"]
-        Coords["Lon / Lat / Month"]
+    subgraph S1 ["1. Surface Multi-Forcing Inputs (8 Channels)"]
+        direction LR
+        I1["Variables: SST / SLA / SSS"]
+        I2["Dynamic Boundary: Wind Stress (U, V)"]
+        I3["Coordinates: Lon, Lat & Cyclic Month"]
     end
 
-    subgraph Encoder["2. Spatial Feature Backbone (Swin-Unet)"]
-        Stem["Patch / Conv Embedding (in_chans=8)"]
-        SwinB1["Swin Block (W-MSA)"]
-        SwinB2["Swin Block (SW-MSA)"]
-        Tokens["Spatial Token Matrix F_surf"]
+    subgraph S2 ["2. Spatial Attention Backbone (Swin Transformer)"]
+        direction LR
+        E1["Patch / Linear Embedding"]
+        E2["Swin Blocks (W-MSA / SW-MSA)"]
+        E3["Surface Spatial Tokens F_surf"]
+        E1 ==> E2 ==> E3
     end
 
-    subgraph PINNHead["3. Continuous PINN Decoder Head"]
-        ZCoord["Continuous Depth Coordinate z (requires_grad=True)"]
-        Concat["Latent Concatenation [F_surf, z]"]
-        MLP["Fully Connected Network (Tanh Activations)"]
-        Preds["Predicted 3-D Fields [T_hat, S_hat]"]
+    subgraph S3 ["3. Continuous PINN Decoder Head (Implicit Neural Rep.)"]
+        direction LR
+        D1["Continuous Depth z (Autograd)"]
+        D2["Latent Concatenation [F_surf, z]"]
+        D3["Continuous MLP Decoder (Tanh)"]
+        D1 --> D2 ==> D3
     end
 
-    subgraph Physics["4. Analytical Autograd & TEOS-10 Constraints"]
-        GradT["Autograd: dT_hat / dz"]
-        LossT["L_phy_T = (1/N) * sum( ReLU( dT_hat / dz ) )"]
-        TEOS["TEOS-10 Seawater Density rho_hat"]
-        GradRho["Autograd: drho_hat / dz"]
-        LossRho["L_phy_rho = (1/N) * sum( ReLU( - drho_hat / dz ) )"]
+    subgraph S4 ["4. 3-D Thermohaline Field Prediction (0–1000m)"]
+        direction LR
+        O1["Predicted Temp T_hat"]
+        O2["Predicted Salinity S_hat"]
     end
 
-    subgraph Optimization["5. Adaptive Multi-Objective Balancing"]
-        LData["Data Fidelity Loss (MSE)"]
-        LTotal["L_total = exp(-w1)*L_data + w1 + exp(w2)*L_phy + w2"]
+    subgraph S5 ["5. Physics Priors & Adaptive Balancing (Closed Loop)"]
+        direction LR
+        subgraph S5_1 ["Supervision & Thermodynamic Priors"]
+            direction TB
+            P_Data["GLORYS12V1 Data Loss (MSE)"]
+            P_Temp["Autograd: dT/dz Thermal Monotonicity"]
+            P_Rho["TEOS-10 & drho/dz Stratification"]
+        end
+        subgraph S5_2 ["Optimization Solver"]
+            direction TB
+            Opt1["Adaptive Dual Uncertainty Weighting"]
+            Opt2["Total Loss: L_total = L_data + L_phy"]
+            Opt3["End-to-End Parameter Update"]
+            Opt1 --> Opt2 --> Opt3
+        end
+        S5_1 ==> S5_2
     end
 
-    Inputs --> Stem --> SwinB1 --> SwinB2 --> Tokens
-    Tokens --> Concat
-    ZCoord --> Concat
-    Concat --> MLP --> Preds
-    Preds --> LData
-    Preds --> GradT --> LossT
-    Preds --> TEOS --> GradRho --> LossRho
-    LossT --> LTotal
-    LossRho --> LTotal
-    LData --> LTotal
+    S1 ==>|8-Channel Tensor| S2
+    S2 ==>|Spatial Tokens F_surf| S3
+    S3 ==>|Continuous Depth Decoding| S4
+    S4 ==>|3-D Physical Validation| S5
+    S5 -. Closed-Loop Gradient Propagation .-> S2
+
+    classDef default font-size:15px;
+    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:2px,color:#0369A1,rx:6px,ry:6px,font-size:15px,font-weight:bold;
+    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:2px,color:#5B21B6,rx:6px,ry:6px,font-size:15px,font-weight:bold;
+    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:2px,color:#047857,rx:6px,ry:6px,font-size:15px,font-weight:bold;
+    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:2px,color:#B45309,rx:6px,ry:6px,font-size:15px,font-weight:bold;
+    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:2px,color:#BE123C,rx:6px,ry:6px,font-size:15px,font-weight:bold;
+
+    class I1,I2,I3 inputStyle;
+    class E1,E2,E3 encStyle;
+    class D1,D2,D3 pinnStyle;
+    class O1,O2 outStyle;
+    class P_Data,P_Temp,P_Rho,Opt1,Opt2,Opt3 phyStyle;
 ```
 
-### 2.1 Forward Mapping Formulation
+### 3.1 Core Forward Mapping Formulation
 
-The model establishes a continuous mapping function from surface dynamics and continuous vertical depth to 3-D thermohaline properties:
+The network fuses 2-D sea surface dynamics with continuous vertical coordinate $z$:
 
 $$
 [\hat{T}, \hat{S}] = f_\theta(\text{SST}, \text{SLA}, \text{SSS}, \text{SSW}_U, \text{SSW}_V, \text{Lon}, \text{Lat}, \text{Month}, z)
 $$
 
-where $z \in [0, 1000\text{ m}]$ is the explicit continuous depth coordinate.
+where $z \in [0, 1000\text{ m}]$ acts as an explicit independent variable.
 
-### 2.2 Shifted Window Attention (Swin-Unet)
+### 3.2 Shifted Window Self-Attention (Swin Transformer)
 
-Spatial tokens are processed using alternating Window Multi-Head Self-Attention (W-MSA) and Shifted Window Multi-Head Self-Attention (SW-MSA):
+Spatial teleconnections are modeled via alternating local window multi-head self-attention (W-MSA) and shifted window self-attention (SW-MSA):
 
 $$
 \text{Attention}(Q, K, V) = \text{Softmax}\left(\frac{QK^T}{\sqrt{d}} + B\right) V
@@ -94,61 +137,76 @@ $$
 
 where $B$ is the learnable relative position bias matrix.
 
-### 2.3 Domain Physics Constraints
+### 3.3 Physics Prior Regularization Losses
 
-**Vertical Temperature Monotonicity Constraint** ($\mathcal{L}_{\mathrm{phy}, T}$):
+**Thermal Monotonicity Constraint** ($\mathcal{L}_{\mathrm{phy}, T}$):
 
 $$
 \mathcal{L}_{\mathrm{phy}, T} = \frac{1}{N} \sum_{i=1}^N \mathrm{ReLU}\left(\frac{\partial \hat{T}_i}{\partial z} + \epsilon\right)
 $$
 
-**TEOS-10 Stratification Stability Constraint** ($\mathcal{L}_{\mathrm{phy}, \rho}$):
+**TEOS-10 Stratification Stability (Anti-Density-Inversion)** ($\mathcal{L}_{\mathrm{phy}, \rho}$):
 
-Preventing unphysical density inversions based on the in-situ density $\hat{\rho} = f_{\mathrm{TEOS\text{-}10}}(\hat{S}, \hat{T}, P)$:
+Using the differentiable equation of state $\hat{\rho} = f_{\mathrm{TEOS\text{-}10}}(\hat{S}, \hat{T}, P)$:
 
 $$
 \mathcal{L}_{\mathrm{phy}, \rho} = \frac{1}{N} \sum_{i=1}^N \mathrm{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)
 $$
 
-**Adaptive Multi-Objective Loss Balancing** ($\mathcal{L}_{\mathrm{total}}$):
+**Adaptive Multi-Objective Balancing** ($\mathcal{L}_{\mathrm{total}}$):
 
 $$
 \mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2
 $$
 
-where $\omega_1, \omega_2$ are learnable dual parameters that eliminate the need for manual hyperparameter tuning.
+where $\omega_1, \omega_2$ are learnable dual parameters dynamically adjusted during optimization.
 
 ---
 
-## 3. Repository Structure
+## 4. Repository Structure
 
 ```text
 Pinn-Ocean/
 ├── configs/
 │   ├── __init__.py
 │   └── default_config.py      # Experiment, model, and physical loss hyperparameters
-├── pinn_ocean/
+├── pinn_ocean/                # Core Python Package
 │   ├── __init__.py
-│   ├── models/
+│   ├── models/                # Deep learning architectures
 │   │   ├── __init__.py
 │   │   ├── swin_blocks.py     # Swin Transformer basic building blocks (W-MSA/SW-MSA)
 │   │   └── swin_ocean_pinn.py # Swin-Ocean-PINN complete end-to-end model
-│   ├── losses/
+│   ├── losses/                # Physics & adaptive optimization losses
 │   │   ├── __init__.py
 │   │   ├── physics_loss.py    # Analytical Autograd gradient and stratification losses
 │   │   └── adaptive_loss.py   # Adaptive multi-objective uncertainty weighting
-│   ├── datasets/
+│   ├── datasets/              # Data ingestion and IO
 │   │   ├── __init__.py
 │   │   ├── downloader.py      # CMEMS subsetting wrapper module
 │   │   └── ocean_dataset.py   # NetCDF4 / Xarray multi-source satellite loader
-│   └── utils/
+│   ├── utils/                 # Marine physics & evaluation metrics
+│   │   ├── __init__.py
+│   │   ├── teos10.py          # Fully differentiable TEOS-10 seawater equation of state
+│   │   └── metrics.py         # RMSE, MAE, R2, and Mixed Layer Depth (MLD) utilities
+│   └── visualization/         # Modular scientific plotting subpackage
 │       ├── __init__.py
-│       ├── teos10.py          # Fully differentiable TEOS-10 seawater equation of state
-│       └── metrics.py         # RMSE, MAE, R2, and Mixed Layer Depth (MLD) utilities
+│       ├── profiles.py        # Vertical profile comparison plotting
+│       ├── ts_diagram.py      # Temperature-Salinity (T-S) consistency diagram
+│       ├── scatter_density.py # Hexbin scatter density & R2 evaluation
+│       └── mld.py             # Mixed Layer Depth (MLD) interface validation
+├── tests/                     # Automated unit and integration test suite
+│   ├── __init__.py
+│   └── test_pipeline.py       # Comprehensive end-to-end verification without external data
+├── checkpoints/               # Trained model checkpoint weights (.pth)
+├── data/                      # Local NetCDF observation and reanalysis data
+│   └── 2020/                  # Downloaded 2020 5-parameter annual dataset
+├── results/                   # High-resolution (300 DPI) figures and plots
 ├── download_data.py           # Automated data collection tool for Open Pacific CMEMS datasets
 ├── train.py                   # Model training entry point
 ├── evaluate.py                # Model evaluation and layer-wise validation script
-├── demo_test.py               # Self-contained pipeline unit test (no external data required)
+├── predict.py                 # Full 3-D volumetric inference & CF-compliant NetCDF exporter
+├── visualize.py               # Main CLI visualization orchestrator
+├── demo_test.py               # Quick verification entry point (delegates to tests/)
 ├── requirements.txt           # Environment dependencies
 ├── setup.py                   # Python package installer
 ├── LICENSE                    # MIT License
@@ -158,7 +216,7 @@ Pinn-Ocean/
 
 ---
 
-## 4. Installation & Environment
+## 5. Installation & Environment
 
 ### Step 1: Clone Repository
 ```bash
@@ -179,9 +237,9 @@ pip install -r requirements.txt
 
 ---
 
-## 5. Quick Start
+## 6. Quick Start & Pipeline Usage
 
-### 5.1 Data Collection (Open Pacific 2013–2021)
+### 6.1 Data Collection (Open Pacific 2013–2021)
 Acquire satellite observations and GLORYS 3-D reanalysis for the Open Pacific basin ($145^\circ\text{E} - 165^\circ\text{E}, 30^\circ\text{N} - 40^\circ\text{N}$, zero land points):
 ```bash
 # Preview the subsetting parameters without connecting
@@ -191,27 +249,39 @@ python download_data.py --dry_run
 python download_data.py --targets sla glorys_3d
 ```
 
-### 5.2 Pipeline Self-Test (No Data Needed)
+### 6.2 Pipeline Self-Test (No Data Needed)
 Run the self-contained verification script to validate forward inference, Autograd analytical differentiation, TEOS-10 seawater density computation, and backpropagation:
 ```bash
 python demo_test.py
 ```
 
-### 5.3 Model Training
+### 6.3 Model Training
 To train on regional or basin-scale NetCDF datasets (e.g., CMEMS DUACS SLA and GLORYS12V1 reanalysis):
 ```bash
 python train.py --epochs 200 --batch_size 4 --lr 3e-4 --sampling_points 800
 ```
 
-### 5.3 Model Evaluation
+### 6.4 Model Evaluation
 Evaluate a trained model checkpoint on the test set:
 ```bash
 python evaluate.py --checkpoint checkpoints/swin_ocean_pinn_best.pth
 ```
 
+### 6.5 Full 3-D Field Reconstruction & NetCDF Export
+Reconstruct continuous 3D potential temperature and salinity fields and export CF-compliant NetCDF4 assets for GIS tools:
+```bash
+python predict.py --data_dir data/2020 --output_file data/2020/pacific_reconstructed_3d.nc
+```
+
+### 6.6 Batch Scientific Visualization
+Generate publication-quality 300 DPI figures (profiles, T-S diagram, hexbin scatter density, and MLD scatter):
+```bash
+python visualize.py --data_dir data/2020 --output_dir results
+```
+
 ---
 
-## 6. Citation
+## 7. Citation
 
 If you find this codebase or methodology helpful in your research, please cite:
 
@@ -237,7 +307,7 @@ If you find this codebase or methodology helpful in your research, please cite:
 
 ---
 
-## 7. Author & Acknowledgements
+## 8. Author & Acknowledgements
 
 *   **Principal Investigator**: Lei Di (Zhejiang University, School of Earth Sciences, GIS Major)
 *   **Advisor**: Dr. Sensen Wu (School of Earth Sciences, Zhejiang University)
@@ -245,6 +315,6 @@ If you find this codebase or methodology helpful in your research, please cite:
 
 ---
 
-## 8. License
+## 9. License
 
 This project is open-sourced under the [MIT License](LICENSE).

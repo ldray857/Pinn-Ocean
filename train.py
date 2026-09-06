@@ -21,6 +21,11 @@ from pinn_ocean.utils.metrics import calc_rmse, calc_r2
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Swin-Ocean-PINN Model")
+    parser.add_argument("--data_dir", type=str,
+                        default="data/2020" if os.path.exists("data/2020/pacific_sla_2013_2021.nc") else "data",
+                        help="Path to folder containing NetCDF datasets (default: auto-detect data/2020 or data)")
+    parser.add_argument("--sla_path", type=str, default=None, help="Custom path to SLA .nc file")
+    parser.add_argument("--gt_path", type=str, default=None, help="Custom path to GLORYS 3D .nc file")
     parser.add_argument("--epochs", type=int, default=200, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size for training")
     parser.add_argument("--lr", type=float, default=3e-4, help="Initial learning rate")
@@ -38,16 +43,21 @@ def main():
     print("==================================================================")
     print("                Swin-Ocean-PINN Training Pipeline                 ")
     print(f" Computing Device: {device} | Total Epochs: {args.epochs} | Batch: {args.batch_size}")
+    print(f" Data Directory  : {os.path.abspath(args.data_dir)}")
     print("==================================================================")
 
     # 1. Dataset & DataLoader
-    data_cfg = DataConfig()
+    sla_path = args.sla_path or os.path.join(args.data_dir, "pacific_sla_2013_2021.nc")
+    gt_path = args.gt_path or os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal_2013_2021.nc")
+
     try:
-        train_dataset = OceanContinuousDataset(data_cfg.sla_path, data_cfg.gt_path, mode='train')
-        val_dataset = OceanContinuousDataset(data_cfg.sla_path, data_cfg.gt_path, mode='val')
+        train_dataset = OceanContinuousDataset(sla_path, gt_path, mode='train')
+        val_dataset = OceanContinuousDataset(sla_path, gt_path, mode='val')
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
         print(f"[Dataset] Train samples: {len(train_dataset)} | Val samples: {len(val_dataset)}")
+        print(f"          SLA Source: {sla_path}")
+        print(f"          3D Reanalysis Truth: {gt_path}")
     except Exception as e:
         print(f"[Warning] Real dataset could not be loaded ({e}).")
         print("Please check NetCDF file paths or run demo_test.py for synthetic verification.")

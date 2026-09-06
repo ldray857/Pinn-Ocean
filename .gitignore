@@ -39,8 +39,12 @@ wheels/
 *.npz
 *.csv
 *.tsv
+# Data files and directories
 data/
-datasets/
+/data/
+data/**
+/datasets/
+!pinn_ocean/datasets/
 
 # Logs and outputs
 runs/
