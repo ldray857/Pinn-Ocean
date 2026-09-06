@@ -51,7 +51,7 @@
 ## 三、 核心算法与网络架构
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '26px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '13px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
 flowchart TD
     subgraph S1 [" "]
         direction TB
@@ -104,18 +104,18 @@ flowchart TD
     O2 ==>|三维物理场全域检验| H5
     Opt -. 闭环物理梯度反传更新参数 .-> H2
 
-    classDef default font-size:25px;
-    classDef headStyle1 fill:#0284C7,stroke:#0284C7,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
-    classDef headStyle2 fill:#7C3AED,stroke:#7C3AED,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
-    classDef headStyle3 fill:#059669,stroke:#059669,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
-    classDef headStyle4 fill:#D97706,stroke:#D97706,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
-    classDef headStyle5 fill:#E11D48,stroke:#E11D48,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
+    classDef default font-size:13px;
+    classDef headStyle1 fill:#0284C7,stroke:#0284C7,stroke-width:1.5px,color:#FFFFFF,rx:8px,ry:8px,font-size:13px,font-weight:normal;
+    classDef headStyle2 fill:#7C3AED,stroke:#7C3AED,stroke-width:1.5px,color:#FFFFFF,rx:8px,ry:8px,font-size:13px,font-weight:normal;
+    classDef headStyle3 fill:#059669,stroke:#059669,stroke-width:1.5px,color:#FFFFFF,rx:8px,ry:8px,font-size:13px,font-weight:normal;
+    classDef headStyle4 fill:#D97706,stroke:#D97706,stroke-width:1.5px,color:#FFFFFF,rx:8px,ry:8px,font-size:13px,font-weight:normal;
+    classDef headStyle5 fill:#E11D48,stroke:#E11D48,stroke-width:1.5px,color:#FFFFFF,rx:8px,ry:8px,font-size:13px,font-weight:normal;
 
-    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:3.5px,color:#0369A1,rx:14px,ry:14px,font-size:24px,font-weight:normal;
-    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:3.5px,color:#5B21B6,rx:14px,ry:14px,font-size:24px,font-weight:normal;
-    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:3.5px,color:#047857,rx:14px,ry:14px,font-size:24px,font-weight:normal;
-    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:3.5px,color:#B45309,rx:14px,ry:14px,font-size:24px,font-weight:normal;
-    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:3.5px,color:#BE123C,rx:14px,ry:14px,font-size:24px,font-weight:normal;
+    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:2px,color:#0369A1,rx:8px,ry:8px,font-size:12px,font-weight:normal;
+    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:2px,color:#5B21B6,rx:8px,ry:8px,font-size:12px,font-weight:normal;
+    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:2px,color:#047857,rx:8px,ry:8px,font-size:12px,font-weight:normal;
+    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:2px,color:#B45309,rx:8px,ry:8px,font-size:12px,font-weight:normal;
+    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:2px,color:#BE123C,rx:8px,ry:8px,font-size:12px,font-weight:normal;
 
     class H1 headStyle1;
     class H2 headStyle2;
