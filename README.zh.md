@@ -51,7 +51,7 @@
 ## 三、 核心算法与网络架构
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '16px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '50px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
 flowchart TD
     subgraph S1 ["1. 海表多源遥感动力输入 (8 通道)"]
         direction LR
