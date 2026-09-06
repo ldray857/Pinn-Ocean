@@ -1,5 +1,17 @@
+# ==============================================================================
+# Pinn-Ocean (Swin-Ocean-PINN) Dependencies & Environment Specifications
+# ==============================================================================
+
+# --- Deep Learning & Autograd Engine ---
 torch>=2.0.0
 torchvision>=0.15.0
+
+# --- GeoAI & Transformer Architecture ---
+timm>=0.9.0
+einops>=0.6.0
+pyyaml>=6.0
+
+# --- Ocean Scientific Data Processing & NetCDF I/O ---
 numpy>=1.23.0
 scipy>=1.10.0
 pandas>=2.0.0
@@ -7,8 +19,44 @@ xarray>=2023.1.0
 netCDF4>=1.6.0
 h5py>=3.8.0
 dask>=2023.1.0
+
+# --- Scientific Visualization & Oceanographic Colormaps ---
 matplotlib>=3.7.0
 cmocean>=3.0.0
-timm>=0.9.0
-einops>=0.6.0
-pyyaml>=6.0
+
+# --- CMEMS Data Acquisition Client & Dependencies ---
+copernicusmarine>=1.0.0
+boto3>=1.28.0
+click>=8.1.0
+pydantic>=2.0.0
+tqdm>=4.65.0
+
+# ==============================================================================
+# Copernicus Marine (copernicusmarine) Configuration & Environment Requirements:
+# ==============================================================================
+# 1. Python Version:
+#    - Python >= 3.9 (Recommended: Python 3.10)
+#
+# 2. CMEMS Account & Authentication:
+#    - Free registration required at: https://marine.copernicus.eu/
+#    - Authentication method A (CLI interactive login, stores credentials locally):
+#        copernicusmarine login
+#      Credentials saved to: ~/.copernicusmarine/.copernicusmarine-credentials
+#    - Authentication method B (Environment variables for CI/CD or cloud scripts):
+#        export COPERNICUSMARINE_SERVICE_USERNAME="your_username"
+#        export COPERNICUSMARINE_SERVICE_PASSWORD="your_password"
+#      (On Windows PowerShell: $env:COPERNICUSMARINE_SERVICE_USERNAME="...")
+#
+# 3. Network & Firewall Requirements:
+#    - Outbound HTTPS (Port 443) access to:
+#        *.marine.copernicus.eu
+#        *.mercator-ocean.fr
+#        *.s3.waw3-1.cloudferro.com (CMEMS S3 Object Storage backend)
+#    - Proxy Configuration (if behind academic/institutional proxy):
+#        export HTTP_PROXY="http://proxy:port"
+#        export HTTPS_PROXY="http://proxy:port"
+#
+# 4. Storage & Disk Space:
+#    - Recommended >= 50 GB free disk space for multi-year 3-D NetCDF subsets.
+# ==============================================================================
+

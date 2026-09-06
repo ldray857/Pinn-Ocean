@@ -26,5 +26,6 @@ setup(
         "netCDF4>=1.6.0",
         "scipy>=1.10.0",
         "einops>=0.6.0",
+        "copernicusmarine>=1.0.0",
     ],
 )

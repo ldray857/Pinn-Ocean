@@ -139,11 +139,13 @@ Pinn-Ocean/
 │   │   └── adaptive_loss.py   # Adaptive multi-objective uncertainty weighting
 │   ├── datasets/
 │   │   ├── __init__.py
+│   │   ├── downloader.py      # CMEMS subsetting wrapper module
 │   │   └── ocean_dataset.py   # NetCDF4 / Xarray multi-source satellite loader
 │   └── utils/
 │       ├── __init__.py
 │       ├── teos10.py          # Fully differentiable TEOS-10 seawater equation of state
 │       └── metrics.py         # RMSE, MAE, R2, and Mixed Layer Depth (MLD) utilities
+├── download_data.py           # Automated data collection tool for Open Pacific CMEMS datasets
 ├── train.py                   # Model training entry point
 ├── evaluate.py                # Model evaluation and layer-wise validation script
 ├── demo_test.py               # Self-contained pipeline unit test (no external data required)
@@ -179,13 +181,23 @@ pip install -r requirements.txt
 
 ## 5. Quick Start
 
-### 5.1 Pipeline Self-Test (No Data Needed)
+### 5.1 Data Collection (Open Pacific 2013–2021)
+Acquire satellite observations and GLORYS 3-D reanalysis for the Open Pacific basin ($145^\circ\text{E} - 165^\circ\text{E}, 30^\circ\text{N} - 40^\circ\text{N}$, zero land points):
+```bash
+# Preview the subsetting parameters without connecting
+python download_data.py --dry_run
+
+# Download core datasets (requires 'copernicusmarine login' first)
+python download_data.py --targets sla glorys_3d
+```
+
+### 5.2 Pipeline Self-Test (No Data Needed)
 Run the self-contained verification script to validate forward inference, Autograd analytical differentiation, TEOS-10 seawater density computation, and backpropagation:
 ```bash
 python demo_test.py
 ```
 
-### 5.2 Model Training
+### 5.3 Model Training
 To train on regional or basin-scale NetCDF datasets (e.g., CMEMS DUACS SLA and GLORYS12V1 reanalysis):
 ```bash
 python train.py --epochs 200 --batch_size 4 --lr 3e-4 --sampling_points 800

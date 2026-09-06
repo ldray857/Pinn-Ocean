@@ -139,11 +139,13 @@ Pinn-Ocean/
 │   │   └── adaptive_loss.py   # 自适应多目标损失平衡算法
 │   ├── datasets/
 │   │   ├── __init__.py
+│   │   ├── downloader.py      # CMEMS 数据子集接口封装模块
 │   │   └── ocean_dataset.py   # 支持 NetCDF4 / Xarray 的 8 通道空间网格数据加载管道
 │   └── utils/
 │       ├── __init__.py
 │       ├── teos10.py          # 全链路可微的 TEOS-10 / UNESCO 海水状态方程实现
 │       └── metrics.py         # RMSE、MAE、R2 与海洋混合层深度 (MLD) 计算工具
+├── download_data.py           # CMEMS 开阔太平洋多源遥感与 3D 再分析数据自动化下载脚本
 ├── train.py                   # 完整模型训练主入口
 ├── evaluate.py                # 检查点评估与分层物理指标验证脚本
 ├── demo_test.py               # 独立自检单元测试脚本 (无需外部大型数据即可执行)
@@ -179,13 +181,23 @@ pip install -r requirements.txt
 
 ## 五、 快速上手与验证
 
-### 5.1 一键单元自检（无需外部数据）
+### 5.1 数据获取（开阔太平洋 2013–2021 年数据）
+本项目提供标准脚本直接从 CMEMS 抓取西北太平洋纯深海大洋无陆地区域（$145^\circ\text{E} - 165^\circ\text{E}, 30^\circ\text{N} - 40^\circ\text{N}$）的月度融合数据：
+```bash
+# 预览下载计划与网格参数（无需网络请求）
+python download_data.py --dry_run
+
+# 正式下载核心数据 (需预先运行 copernicusmarine login)
+python download_data.py --targets sla glorys_3d
+```
+
+### 5.2 一键单元自检（无需外部数据）
 该测试通过仿真合成批次，对前向推理、Autograd 自动微分链、海水密度求导及反向梯度传播进行闭环校验：
 ```bash
 python demo_test.py
 ```
 
-### 5.2 启动模型训练
+### 5.3 启动模型训练
 在本地或云端算力节点针对区域或大洋尺度的 NetCDF 数据启动物理训练：
 ```bash
 python train.py --epochs 200 --batch_size 4 --lr 3e-4 --sampling_points 800
