@@ -50,11 +50,28 @@ The dataset is sourced from the Copernicus Marine Service (CMEMS) and the Intern
 <div align="center">
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '17px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'background': '#FFFFFF',
+    'primaryColor': '#FFFFFF',
+    'primaryBorderColor': '#CBD5E1',
+    'primaryTextColor': '#0F172A',
+    'secondaryColor': '#F8FAFC',
+    'tertiaryColor': '#FFFFFF',
+    'mainBkg': '#FFFFFF',
+    'clusterBkg': '#FFFFFF',
+    'clusterBorder': '#E2E8F0',
+    'lineColor': '#475569',
+    'textColor': '#0F172A',
+    'edgeLabelBackground': '#FFFFFF',
+    'fontFamily': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  }
+}}%%
 flowchart TD
     subgraph S1 [" "]
         direction TB
-        H1["1. Surface Multi-Forcing Inputs (8 Channels)"]
+        H1["1. Surface Multi-Forcing Inputs<br/>(8 Channels)"]
         I1["Dynamic Tracers: SST / SLA / SSS"]
         I2["Boundary Forcing: Wind Stress (Wind U / V)"]
         I3["Spatiotemporal: Lon, Lat / Month Period"]
@@ -63,17 +80,17 @@ flowchart TD
 
     subgraph S2 [" "]
         direction TB
-        H2["2. Spatial Attention Backbone (Swin Transformer)"]
+        H2["2. Spatial Attention Backbone<br/>(Swin Transformer)"]
         E1["Patch Embedding: Hidden Dimension C"]
-        E2["W-MSA / SW-MSA: Local & Shifted Window Attention"]
+        E2["W-MSA / SW-MSA<br/>Local and Shifted Window Attention"]
         E3["Surface Latent Feature Token Matrix F_surf"]
         H2 --> E1 ==> E2 ==> E3
     end
 
     subgraph S3 [" "]
         direction TB
-        H3["3. Continuous PINN Decoder (Implicit Neural Rep.)"]
-        D1["Vertical Depth Variable z ∈ [0, 1000m] (requires_grad)"]
+        H3["3. Continuous PINN Decoder<br/>(Implicit Neural Representation)"]
+        D1["Vertical Depth Variable<br/>z ∈ [0, 1000m] (requires_grad)"]
         D2["Latent Concatenation: [F_surf, z] Representation"]
         D3["Continuous MLP Decoder: Smooth Tanh Activation"]
         H3 --> D1 --> D2 ==> D3
@@ -81,19 +98,19 @@ flowchart TD
 
     subgraph S4 [" "]
         direction TB
-        H4["4. 3-D Thermohaline Field Prediction (0–1000m)"]
-        O1["Reconstructed Temperature T_hat (Mixed Layer / Thermocline)"]
-        O2["Reconstructed Salinity S_hat (Subsurface Halocline)"]
+        H4["4. 3-D Thermohaline Field Prediction<br/>(0–1000m)"]
+        O1["Reconstructed Temperature T_hat<br/>(Mixed Layer / Thermocline)"]
+        O2["Reconstructed Salinity S_hat<br/>(Subsurface Halocline)"]
         H4 --> O1 --- O2
     end
 
     subgraph S5 [" "]
         direction TB
-        H5["5. Physics Priors & Adaptive Balancing (Closed Loop)"]
+        H5["5. Physics Priors & Adaptive Balancing<br/>(Closed Loop)"]
         P1["Data Loss L_data: GLORYS12V1 Full-Depth MSE"]
-        P2["Thermal Monotonicity L_phy,T: Autograd dT/dz ≤ 0"]
-        P3["Stratification Stability L_phy,rho: TEOS-10 drho/dz ≥ 0"]
-        Opt["Adaptive Multi-Objective Balancing & Backpropagation"]
+        P2["Thermal Monotonicity L_phy,T<br/>Autograd dT/dz ≤ 0"]
+        P3["Stratification Stability L_phy,rho<br/>TEOS-10 drho/dz ≥ 0"]
+        Opt["Adaptive Multi-Objective Balancing<br/>& Backpropagation"]
         H5 --> P1 --- P2 --- P3 ==> Opt
     end
 
@@ -103,18 +120,23 @@ flowchart TD
     O2 ==>|3-D Physical Validation| H5
     Opt -. Closed-Loop Physical Gradient .-> H2
 
-    classDef default font-size:16px;
-    classDef headStyle1 fill:#0284C7,stroke:#0284C7,stroke-width:1.8px,color:#FFFFFF,rx:10px,ry:10px,font-size:17px,font-weight:normal;
-    classDef headStyle2 fill:#7C3AED,stroke:#7C3AED,stroke-width:1.8px,color:#FFFFFF,rx:10px,ry:10px,font-size:17px,font-weight:normal;
-    classDef headStyle3 fill:#059669,stroke:#059669,stroke-width:1.8px,color:#FFFFFF,rx:10px,ry:10px,font-size:17px,font-weight:normal;
-    classDef headStyle4 fill:#D97706,stroke:#D97706,stroke-width:1.8px,color:#FFFFFF,rx:10px,ry:10px,font-size:17px,font-weight:normal;
-    classDef headStyle5 fill:#E11D48,stroke:#E11D48,stroke-width:1.8px,color:#FFFFFF,rx:10px,ry:10px,font-size:17px,font-weight:normal;
+    style S1 fill:#FFFFFF,stroke:#0284C7,stroke-width:1.5px,stroke-dasharray: 4 4,rx:8px,ry:8px
+    style S2 fill:#FFFFFF,stroke:#7C3AED,stroke-width:1.5px,stroke-dasharray: 4 4,rx:8px,ry:8px
+    style S3 fill:#FFFFFF,stroke:#059669,stroke-width:1.5px,stroke-dasharray: 4 4,rx:8px,ry:8px
+    style S4 fill:#FFFFFF,stroke:#D97706,stroke-width:1.5px,stroke-dasharray: 4 4,rx:8px,ry:8px
+    style S5 fill:#FFFFFF,stroke:#E11D48,stroke-width:1.5px,stroke-dasharray: 4 4,rx:8px,ry:8px
 
-    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:2.5px,color:#0369A1,rx:10px,ry:10px,font-size:16px,font-weight:normal;
-    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:2.5px,color:#5B21B6,rx:10px,ry:10px,font-size:16px,font-weight:normal;
-    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:2.5px,color:#047857,rx:10px,ry:10px,font-size:16px,font-weight:normal;
-    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:2.5px,color:#B45309,rx:10px,ry:10px,font-size:16px,font-weight:normal;
-    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:2.5px,color:#BE123C,rx:10px,ry:10px,font-size:16px,font-weight:normal;
+    classDef headStyle1 fill:#0284C7,stroke:#0284C7,stroke-width:1.5px,color:#FFFFFF,rx:6px,ry:6px;
+    classDef headStyle2 fill:#7C3AED,stroke:#7C3AED,stroke-width:1.5px,color:#FFFFFF,rx:6px,ry:6px;
+    classDef headStyle3 fill:#059669,stroke:#059669,stroke-width:1.5px,color:#FFFFFF,rx:6px,ry:6px;
+    classDef headStyle4 fill:#D97706,stroke:#D97706,stroke-width:1.5px,color:#FFFFFF,rx:6px,ry:6px;
+    classDef headStyle5 fill:#E11D48,stroke:#E11D48,stroke-width:1.5px,color:#FFFFFF,rx:6px,ry:6px;
+
+    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:1.5px,color:#0369A1,rx:6px,ry:6px;
+    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:1.5px,color:#5B21B6,rx:6px,ry:6px;
+    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:1.5px,color:#047857,rx:6px,ry:6px;
+    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#B45309,rx:6px,ry:6px;
+    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:1.5px,color:#BE123C,rx:6px,ry:6px;
 
     class H1 headStyle1;
     class H2 headStyle2;

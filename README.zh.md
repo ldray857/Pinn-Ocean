@@ -53,11 +53,28 @@
 <div align="center">
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '17px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'background': '#FFFFFF',
+    'primaryColor': '#FFFFFF',
+    'primaryBorderColor': '#CBD5E1',
+    'primaryTextColor': '#0F172A',
+    'secondaryColor': '#F8FAFC',
+    'tertiaryColor': '#FFFFFF',
+    'mainBkg': '#FFFFFF',
+    'clusterBkg': '#FFFFFF',
+    'clusterBorder': '#E2E8F0',
+    'lineColor': '#475569',
+    'textColor': '#0F172A',
+    'edgeLabelBackground': '#FFFFFF',
+    'fontFamily': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  }
+}}%%
 flowchart TD
     subgraph S1 [" "]
         direction TB
-        H1["1. 海表多源动力输入 (8 通道)"]
+        H1["1. 海表多源动力输入<br/>(8 通道)"]
         I1["动力要素：SST / SLA / SSS"]
         I2["边界强迫：海表风应力 (Wind U / V 抽吸)"]
         I3["时空坐标：经纬度 Lon, Lat / 月份周期 Month"]
@@ -66,17 +83,17 @@ flowchart TD
 
     subgraph S2 [" "]
         direction TB
-        H2["2. 空间自注意力编码器 (Swin Transformer)"]
+        H2["2. 空间自注意力编码器<br/>(Swin Transformer)"]
         E1["Patch Embedding：映射至隐空间隐维度 C"]
-        E2["W-MSA / SW-MSA：局部与跨窗口自注意力"]
+        E2["W-MSA / SW-MSA<br/>局部与跨窗口自注意力"]
         E3["海表高阶空间隐特征 Token 矩阵 F_surf"]
         H2 --> E1 ==> E2 ==> E3
     end
 
     subgraph S3 [" "]
         direction TB
-        H3["3. 连续坐标 PINN 解码头 (隐式神经表征)"]
-        D1["垂直深度自变量 z ∈ [0, 1000m] (求导启用)"]
+        H3["3. 连续坐标 PINN 解码头<br/>(隐式神经表征)"]
+        D1["垂直深度自变量<br/>z ∈ [0, 1000m] (求导启用)"]
         D2["特征级联拼接：[F_surf, z] 联合表征"]
         D3["连续 MLP 解码器：Tanh 连续平滑映射"]
         H3 --> D1 --> D2 ==> D3
@@ -84,9 +101,9 @@ flowchart TD
 
     subgraph S4 [" "]
         direction TB
-        H4["4. 三维立体物理场预测 (0–1000m)"]
-        O1["三维位温场重构 T_hat (混合层 / 温跃层 / 深层)"]
-        O2["三维实用盐度场重构 S_hat (次表层高盐 / 中层低盐舌)"]
+        H4["4. 三维立体物理场预测<br/>(0–1000m)"]
+        O1["三维位温场重构 T_hat<br/>(混合层 / 温跃层 / 深层)"]
+        O2["三维实用盐度场重构 S_hat<br/>(次表层高盐 / 中层低盐舌)"]
         H4 --> O1 --- O2
     end
 
@@ -94,9 +111,9 @@ flowchart TD
         direction TB
         H5["5. 物理先验约束与自适应优化闭环"]
         P1["数据保真损失 L_data：GLORYS12V1 全深度 MSE 监督"]
-        P2["温度递减约束 L_phy,T：Autograd 求导 dT/dz ≤ 0"]
-        P3["层结稳定约束 L_phy,rho：TEOS-10 状态方程 drho/dz ≥ 0"]
-        Opt["自适应多目标对偶平衡：动态权衡与联合更新"]
+        P2["温度递减约束 L_phy,T<br/>Autograd 求导 dT/dz ≤ 0"]
+        P3["层结稳定约束 L_phy,rho<br/>TEOS-10 状态方程 drho/dz ≥ 0"]
+        Opt["自适应多目标对偶平衡<br/>动态权衡与联合更新"]
         H5 --> P1 --- P2 --- P3 ==> Opt
     end
 
@@ -106,18 +123,23 @@ flowchart TD
     O2 ==>|三维物理场全域约束| H5
     Opt -. 闭环物理梯度反传 .-> H2
 
-    classDef default font-size:16px;
-    classDef headStyle1 fill:#0284C7,stroke:#0284C7,stroke-width:1.8px,color:#FFFFFF,rx:10px,ry:10px,font-size:17px,font-weight:normal;
-    classDef headStyle2 fill:#7C3AED,stroke:#7C3AED,stroke-width:1.8px,color:#FFFFFF,rx:10px,ry:10px,font-size:17px,font-weight:normal;
-    classDef headStyle3 fill:#059669,stroke:#059669,stroke-width:1.8px,color:#FFFFFF,rx:10px,ry:10px,font-size:17px,font-weight:normal;
-    classDef headStyle4 fill:#D97706,stroke:#D97706,stroke-width:1.8px,color:#FFFFFF,rx:10px,ry:10px,font-size:17px,font-weight:normal;
-    classDef headStyle5 fill:#E11D48,stroke:#E11D48,stroke-width:1.8px,color:#FFFFFF,rx:10px,ry:10px,font-size:17px,font-weight:normal;
+    style S1 fill:#FFFFFF,stroke:#0284C7,stroke-width:1.5px,stroke-dasharray: 4 4,rx:8px,ry:8px
+    style S2 fill:#FFFFFF,stroke:#7C3AED,stroke-width:1.5px,stroke-dasharray: 4 4,rx:8px,ry:8px
+    style S3 fill:#FFFFFF,stroke:#059669,stroke-width:1.5px,stroke-dasharray: 4 4,rx:8px,ry:8px
+    style S4 fill:#FFFFFF,stroke:#D97706,stroke-width:1.5px,stroke-dasharray: 4 4,rx:8px,ry:8px
+    style S5 fill:#FFFFFF,stroke:#E11D48,stroke-width:1.5px,stroke-dasharray: 4 4,rx:8px,ry:8px
 
-    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:2.5px,color:#0369A1,rx:10px,ry:10px,font-size:16px,font-weight:normal;
-    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:2.5px,color:#5B21B6,rx:10px,ry:10px,font-size:16px,font-weight:normal;
-    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:2.5px,color:#047857,rx:10px,ry:10px,font-size:16px,font-weight:normal;
-    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:2.5px,color:#B45309,rx:10px,ry:10px,font-size:16px,font-weight:normal;
-    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:2.5px,color:#BE123C,rx:10px,ry:10px,font-size:16px,font-weight:normal;
+    classDef headStyle1 fill:#0284C7,stroke:#0284C7,stroke-width:1.5px,color:#FFFFFF,rx:6px,ry:6px;
+    classDef headStyle2 fill:#7C3AED,stroke:#7C3AED,stroke-width:1.5px,color:#FFFFFF,rx:6px,ry:6px;
+    classDef headStyle3 fill:#059669,stroke:#059669,stroke-width:1.5px,color:#FFFFFF,rx:6px,ry:6px;
+    classDef headStyle4 fill:#D97706,stroke:#D97706,stroke-width:1.5px,color:#FFFFFF,rx:6px,ry:6px;
+    classDef headStyle5 fill:#E11D48,stroke:#E11D48,stroke-width:1.5px,color:#FFFFFF,rx:6px,ry:6px;
+
+    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:1.5px,color:#0369A1,rx:6px,ry:6px;
+    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:1.5px,color:#5B21B6,rx:6px,ry:6px;
+    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:1.5px,color:#047857,rx:6px,ry:6px;
+    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#B45309,rx:6px,ry:6px;
+    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:1.5px,color:#BE123C,rx:6px,ry:6px;
 
     class H1 headStyle1;
     class H2 headStyle2;
