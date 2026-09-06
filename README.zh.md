@@ -107,11 +107,11 @@ flowchart TD
     S5 -. 物理闭环梯度反向传播 .-> S2
 
     classDef default font-size:50px;
-    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:2px,color:#0369A1,rx:6px,ry:6px,font-size:50px,font-weight:bold;
-    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:2px,color:#5B21B6,rx:6px,ry:6px,font-size:50px,font-weight:bold;
-    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:2px,color:#047857,rx:6px,ry:6px,font-size:50px,font-weight:bold;
-    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:2px,color:#B45309,rx:6px,ry:6px,font-size:50px,font-weight:bold;
-    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:2px,color:#BE123C,rx:6px,ry:6px,font-size:50px,font-weight:bold;
+    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:15px,color:#0369A1,rx:6px,ry:6px,font-size:50px,font-weight:bold;
+    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:15px,color:#5B21B6,rx:6px,ry:6px,font-size:50px,font-weight:bold;
+    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:15px,color:#047857,rx:6px,ry:6px,font-size:50px,font-weight:bold;
+    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:15px,color:#B45309,rx:6px,ry:6px,font-size:50px,font-weight:bold;
+    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:15px,color:#BE123C,rx:6px,ry:6px,font-size:50px,font-weight:bold;
 
     class I1,I2,I3 inputStyle;
     class E1,E2,E3 encStyle;
