@@ -48,73 +48,68 @@ The dataset is sourced from the Copernicus Marine Service (CMEMS) and the Intern
 ## 3. Key Architecture & Methodology
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '16px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '24px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
 flowchart TD
     subgraph S1 ["1. Surface Multi-Forcing Inputs (8 Channels)"]
-        direction LR
-        I1["Variables: SST / SLA / SSS"]
-        I2["Dynamic Boundary: Wind Stress (U, V)"]
-        I3["Coordinates: Lon, Lat & Cyclic Month"]
+        direction TB
+        I1["<b>Surface Observations</b><br>SST / SLA / SSS (Satellite & Multi-OI)"]
+        I2["<b>Dynamic Boundary Forcing</b><br>Wind Stress (Wind U, Wind V Ekman Pumping)"]
+        I3["<b>Spatiotemporal Coordinates</b><br>Longitude / Latitude / Cyclic Month"]
+        I1 --- I2 --- I3
     end
 
     subgraph S2 ["2. Spatial Attention Backbone (Swin Transformer)"]
-        direction LR
-        E1["Patch / Linear Embedding"]
-        E2["Swin Blocks (W-MSA / SW-MSA)"]
-        E3["Surface Spatial Tokens F_surf"]
+        direction TB
+        E1["<b>Multi-Channel Projection</b><br>Patch Embedding Project to Hidden Dim C"]
+        E2["<b>Shifted Window Attention</b><br>W-MSA Local Window & SW-MSA Cross-Window"]
+        E3["<b>Surface Latent Features</b><br>Spatial Token Matrix Representation F_surf"]
         E1 ==> E2 ==> E3
     end
 
     subgraph S3 ["3. Continuous PINN Decoder Head (Implicit Neural Rep.)"]
-        direction LR
-        D1["Continuous Depth z (Autograd)"]
-        D2["Latent Concatenation [F_surf, z]"]
-        D3["Continuous MLP Decoder (Tanh)"]
+        direction TB
+        D1["<b>Continuous Vertical Depth</b><br>Depth Coordinate z ∈ [0, 1000m] (requires_grad=True)"]
+        D2["<b>Latent Concatenation</b><br>Merge Surface Tokens with Depth Coordinate [F_surf, z]"]
+        D3["<b>Continuous MLP Decoder</b><br>Multi-Layer Perceptron (Continuous Tanh Activations)"]
         D1 --> D2 ==> D3
     end
 
     subgraph S4 ["4. 3-D Thermohaline Field Prediction (0–1000m)"]
-        direction LR
-        O1["Predicted Temp T_hat"]
-        O2["Predicted Salinity S_hat"]
+        direction TB
+        O1["<b>Reconstructed Temperature T_hat</b><br>Mixed Layer, Main Thermocline & Deep Stratification"]
+        O2["<b>Reconstructed Salinity S_hat</b><br>Subsurface Halocline & Low-Salinity Intermediate Water"]
+        O1 --- O2
     end
 
     subgraph S5 ["5. Physics Priors & Adaptive Balancing (Closed Loop)"]
-        direction LR
-        subgraph S5_1 ["Supervision & Thermodynamic Priors"]
-            direction TB
-            P_Data["GLORYS12V1 Data Loss (MSE)"]
-            P_Temp["Autograd: dT/dz Thermal Monotonicity"]
-            P_Rho["TEOS-10 & drho/dz Stratification"]
-        end
-        subgraph S5_2 ["Optimization Solver"]
-            direction TB
-            Opt1["Adaptive Dual Uncertainty Weighting"]
-            Opt2["Total Loss: L_total = L_data + L_phy"]
-            Opt3["End-to-End Parameter Update"]
-            Opt1 --> Opt2 --> Opt3
-        end
-        S5_1 ==> S5_2
+        direction TB
+        P1["<b>Data Fidelity Loss L_data</b><br>GLORYS12V1 3-D Reanalysis Ground Truth (MSE)"]
+        P2["<b>Autograd Thermal Monotonicity L_phy,T</b><br>Analytical dT/dz Derivative Penalty Against Inversions"]
+        P3["<b>TEOS-10 Stratification Stability L_phy,rho</b><br>Differentiable Density State Equation & drho/dz Penalty"]
+        Opt["<b>Adaptive Multi-Objective Balancing</b><br>Dynamic Uncertainty Weighting & Backprop Update"]
+        P1 --> Opt
+        P2 --> Opt
+        P3 --> Opt
     end
 
-    S1 ==>|8-Channel Tensor| S2
+    S1 ==>|8-Channel Tensor X_surf| S2
     S2 ==>|Spatial Tokens F_surf| S3
     S3 ==>|Continuous Depth Decoding| S4
     S4 ==>|3-D Physical Validation| S5
-    S5 -. Closed-Loop Gradient Propagation .-> S2
+    Opt -. Closed-Loop Gradient Backpropagation .-> S2
 
-    classDef default font-size:15px;
-    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:2px,color:#0369A1,rx:6px,ry:6px,font-size:15px,font-weight:bold;
-    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:2px,color:#5B21B6,rx:6px,ry:6px,font-size:15px,font-weight:bold;
-    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:2px,color:#047857,rx:6px,ry:6px,font-size:15px,font-weight:bold;
-    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:2px,color:#B45309,rx:6px,ry:6px,font-size:15px,font-weight:bold;
-    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:2px,color:#BE123C,rx:6px,ry:6px,font-size:15px,font-weight:bold;
+    classDef default font-size:22px;
+    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:4px,color:#0369A1,rx:14px,ry:14px,font-size:22px,font-weight:bold;
+    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:4px,color:#5B21B6,rx:14px,ry:14px,font-size:22px,font-weight:bold;
+    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:4px,color:#047857,rx:14px,ry:14px,font-size:22px,font-weight:bold;
+    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:4px,color:#B45309,rx:14px,ry:14px,font-size:22px,font-weight:bold;
+    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:4px,color:#BE123C,rx:14px,ry:14px,font-size:22px,font-weight:bold;
 
     class I1,I2,I3 inputStyle;
     class E1,E2,E3 encStyle;
     class D1,D2,D3 pinnStyle;
     class O1,O2 outStyle;
-    class P_Data,P_Temp,P_Rho,Opt1,Opt2,Opt3 phyStyle;
+    class P1,P2,P3,Opt phyStyle;
 ```
 
 ### 3.1 Core Forward Mapping Formulation
