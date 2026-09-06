@@ -48,62 +48,77 @@ The dataset is sourced from the Copernicus Marine Service (CMEMS) and the Intern
 ## 3. Key Architecture & Methodology
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '24px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '26px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
 flowchart TD
-    subgraph S1 ["1. Surface Multi-Forcing Inputs (8 Channels)"]
+    subgraph S1 [" "]
         direction TB
-        I1["<b>Surface Observations</b><br>SST / SLA / SSS (Satellite & Multi-OI)"]
-        I2["<b>Dynamic Boundary Forcing</b><br>Wind Stress (Wind U, Wind V Ekman Pumping)"]
-        I3["<b>Spatiotemporal Coordinates</b><br>Longitude / Latitude / Cyclic Month"]
-        I1 --- I2 --- I3
+        H1["1. Surface Multi-Forcing Inputs (8 Channels)"]
+        I1["Surface Observations<br>SST / SLA / SSS (Satellite & Multi-OI)"]
+        I2["Dynamic Boundary Forcing<br>Wind Stress (Wind U, Wind V Ekman Pumping)"]
+        I3["Spatiotemporal Coordinates<br>Longitude / Latitude / Cyclic Month"]
+        H1 --> I1 --- I2 --- I3
     end
 
-    subgraph S2 ["2. Spatial Attention Backbone (Swin Transformer)"]
+    subgraph S2 [" "]
         direction TB
-        E1["<b>Multi-Channel Projection</b><br>Patch Embedding Project to Hidden Dim C"]
-        E2["<b>Shifted Window Attention</b><br>W-MSA Local Window & SW-MSA Cross-Window"]
-        E3["<b>Surface Latent Features</b><br>Spatial Token Matrix Representation F_surf"]
-        E1 ==> E2 ==> E3
+        H2["2. Spatial Attention Backbone (Swin Transformer)"]
+        E1["Multi-Channel Projection<br>Patch Embedding Project to Hidden Dim C"]
+        E2["Shifted Window Attention<br>W-MSA Local Window & SW-MSA Cross-Window"]
+        E3["Surface Latent Features<br>Spatial Token Matrix Representation F_surf"]
+        H2 --> E1 ==> E2 ==> E3
     end
 
-    subgraph S3 ["3. Continuous PINN Decoder Head (Implicit Neural Rep.)"]
+    subgraph S3 [" "]
         direction TB
-        D1["<b>Continuous Vertical Depth</b><br>Depth Coordinate z ∈ [0, 1000m] (requires_grad=True)"]
-        D2["<b>Latent Concatenation</b><br>Merge Surface Tokens with Depth Coordinate [F_surf, z]"]
-        D3["<b>Continuous MLP Decoder</b><br>Multi-Layer Perceptron (Continuous Tanh Activations)"]
-        D1 --> D2 ==> D3
+        H3["3. Continuous PINN Decoder Head (Implicit Neural Rep.)"]
+        D1["Continuous Vertical Depth<br>Depth Coordinate z ∈ [0, 1000m] (requires_grad=True)"]
+        D2["Latent Concatenation<br>Merge Surface Tokens with Depth Coordinate [F_surf, z]"]
+        D3["Continuous MLP Decoder<br>Multi-Layer Perceptron (Continuous Tanh Activations)"]
+        H3 --> D1 --> D2 ==> D3
     end
 
-    subgraph S4 ["4. 3-D Thermohaline Field Prediction (0–1000m)"]
+    subgraph S4 [" "]
         direction TB
-        O1["<b>Reconstructed Temperature T_hat</b><br>Mixed Layer, Main Thermocline & Deep Stratification"]
-        O2["<b>Reconstructed Salinity S_hat</b><br>Subsurface Halocline & Low-Salinity Intermediate Water"]
-        O1 --- O2
+        H4["4. 3-D Thermohaline Field Prediction (0–1000m)"]
+        O1["Reconstructed Temperature T_hat<br>Mixed Layer, Main Thermocline & Deep Stratification"]
+        O2["Reconstructed Salinity S_hat<br>Subsurface Halocline & Low-Salinity Intermediate Water"]
+        H4 --> O1 --- O2
     end
 
-    subgraph S5 ["5. Physics Priors & Adaptive Balancing (Closed Loop)"]
+    subgraph S5 [" "]
         direction TB
-        P1["<b>Data Fidelity Loss L_data</b><br>GLORYS12V1 3-D Reanalysis Ground Truth (MSE)"]
-        P2["<b>Autograd Thermal Monotonicity L_phy,T</b><br>Analytical dT/dz Derivative Penalty Against Inversions"]
-        P3["<b>TEOS-10 Stratification Stability L_phy,rho</b><br>Differentiable Density State Equation & drho/dz Penalty"]
-        Opt["<b>Adaptive Multi-Objective Balancing</b><br>Dynamic Uncertainty Weighting & Backprop Update"]
-        P1 --> Opt
-        P2 --> Opt
-        P3 --> Opt
+        H5["5. Physics Priors & Adaptive Balancing (Closed Loop)"]
+        P1["Data Fidelity Loss L_data<br>GLORYS12V1 3-D Reanalysis Ground Truth (MSE)"]
+        P2["Autograd Thermal Monotonicity L_phy,T<br>Analytical dT/dz Derivative Penalty Against Inversions"]
+        P3["TEOS-10 Stratification Stability L_phy,rho<br>Differentiable Density State Equation & drho/dz Penalty"]
+        Opt["Adaptive Multi-Objective Balancing<br>Dynamic Uncertainty Weighting & Backprop Update"]
+        H5 --> P1 --- P2 --- P3 ==> Opt
     end
 
-    S1 ==>|8-Channel Tensor X_surf| S2
-    S2 ==>|Spatial Tokens F_surf| S3
-    S3 ==>|Continuous Depth Decoding| S4
-    S4 ==>|3-D Physical Validation| S5
-    Opt -. Closed-Loop Gradient Backpropagation .-> S2
+    I3 ==>|8-Channel Tensor X_surf| H2
+    E3 ==>|Spatial Tokens F_surf| H3
+    D3 ==>|Continuous Depth Decoding| H4
+    O2 ==>|3-D Physical Validation| H5
+    Opt -. Closed-Loop Gradient Backpropagation .-> H2
 
-    classDef default font-size:22px;
-    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:4px,color:#0369A1,rx:14px,ry:14px,font-size:22px,font-weight:bold;
-    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:4px,color:#5B21B6,rx:14px,ry:14px,font-size:22px,font-weight:bold;
-    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:4px,color:#047857,rx:14px,ry:14px,font-size:22px,font-weight:bold;
-    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:4px,color:#B45309,rx:14px,ry:14px,font-size:22px,font-weight:bold;
-    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:4px,color:#BE123C,rx:14px,ry:14px,font-size:22px,font-weight:bold;
+    classDef default font-size:25px;
+    classDef headStyle1 fill:#0284C7,stroke:#0284C7,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
+    classDef headStyle2 fill:#7C3AED,stroke:#7C3AED,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
+    classDef headStyle3 fill:#059669,stroke:#059669,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
+    classDef headStyle4 fill:#D97706,stroke:#D97706,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
+    classDef headStyle5 fill:#E11D48,stroke:#E11D48,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
+
+    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:3.5px,color:#0369A1,rx:14px,ry:14px,font-size:24px,font-weight:normal;
+    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:3.5px,color:#5B21B6,rx:14px,ry:14px,font-size:24px,font-weight:normal;
+    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:3.5px,color:#047857,rx:14px,ry:14px,font-size:24px,font-weight:normal;
+    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:3.5px,color:#B45309,rx:14px,ry:14px,font-size:24px,font-weight:normal;
+    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:3.5px,color:#BE123C,rx:14px,ry:14px,font-size:24px,font-weight:normal;
+
+    class H1 headStyle1;
+    class H2 headStyle2;
+    class H3 headStyle3;
+    class H4 headStyle4;
+    class H5 headStyle5;
 
     class I1,I2,I3 inputStyle;
     class E1,E2,E3 encStyle;

@@ -51,62 +51,77 @@
 ## 三、 核心算法与网络架构
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '24px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '26px', 'fontFamily': 'system-ui, -apple-system, sans-serif', 'primaryColor': '#eff6ff', 'primaryBorderColor': '#3b82f6', 'primaryTextColor': '#1e3a8a', 'lineColor': '#475569' }}}%%
 flowchart TD
-    subgraph S1 ["1. 海表多源遥感动力输入 (8 通道)"]
+    subgraph S1 [" "]
         direction TB
-        I1["<b>海表动力要素</b><br>海表温度 SST / 海面高度异常 SLA / 海表盐度 SSS"]
-        I2["<b>动力边界条件</b><br>海面风应力 (Wind U, Wind V 埃克曼抽吸)"]
-        I3["<b>时空编码特征</b><br>经度 Lon / 纬度 Lat / 月份周期 Cyclic Month"]
-        I1 --- I2 --- I3
+        H1["1. 海表多源遥感动力输入 (8 通道)"]
+        I1["海表动力要素<br>海表温度 SST / 海面高度异常 SLA / 海表盐度 SSS"]
+        I2["动力边界条件<br>海面风应力 (Wind U, Wind V 埃克曼抽吸)"]
+        I3["时空编码特征<br>经度 Lon / 纬度 Lat / 月份周期 Cyclic Month"]
+        H1 --> I1 --- I2 --- I3
     end
 
-    subgraph S2 ["2. 空间自注意力编码器 (Swin Transformer)"]
+    subgraph S2 [" "]
         direction TB
-        E1["<b>多通道特征投影</b><br>Patch Embedding 映射至隐维度 C"]
-        E2["<b>空间窗口多头自注意力</b><br>W-MSA 局部窗口 & SW-MSA 跨窗口移位"]
-        E3["<b>海表高阶空间隐特征</b><br>空间 Token 矩阵表征 F_surf"]
-        E1 ==> E2 ==> E3
+        H2["2. 空间自注意力编码器 (Swin Transformer)"]
+        E1["多通道特征投影<br>Patch Embedding 映射至隐维度 C"]
+        E2["空间窗口多头自注意力<br>W-MSA 局部窗口 & SW-MSA 跨窗口移位"]
+        E3["海表高阶空间隐特征<br>空间 Token 矩阵表征 F_surf"]
+        H2 --> E1 ==> E2 ==> E3
     end
 
-    subgraph S3 ["3. 连续深度坐标 PINN 解码头 (隐式神经表征)"]
+    subgraph S3 [" "]
         direction TB
-        D1["<b>连续垂直深度自变量</b><br>深度坐标 z ∈ [0, 1000m] (requires_grad=True)"]
-        D2["<b>特征级联融合</b><br>拼接海表空间隐特征与深度坐标 [F_surf, z]"]
-        D3["<b>连续可导 MLP 解码网络</b><br>多层全连接前馈网络 (连续 Tanh 激活函数)"]
-        D1 --> D2 ==> D3
+        H3["3. 连续深度坐标 PINN 解码头 (隐式神经表征)"]
+        D1["连续垂直深度自变量<br>深度坐标 z ∈ [0, 1000m] (requires_grad=True)"]
+        D2["特征级联融合<br>拼接海表空间隐特征与深度坐标 [F_surf, z]"]
+        D3["连续可导 MLP 解码网络<br>多层全连接前馈网络 (连续 Tanh 激活函数)"]
+        H3 --> D1 --> D2 ==> D3
     end
 
-    subgraph S4 ["4. 预测三维物理场 (0–1000m 连续立体场)"]
+    subgraph S4 [" "]
         direction TB
-        O1["<b>三维位温场重构 T_hat</b><br>捕捉上混合层、主温跃层与深层水温梯度"]
-        O2["<b>三维实用盐度场重构 S_hat</b><br>反演高盐水下层与中层低盐水舌分布"]
-        O1 --- O2
+        H4["4. 预测三维物理场 (0–1000m 连续立体场)"]
+        O1["三维位温场重构 T_hat<br>捕捉上混合层、主温跃层与深层水温梯度"]
+        O2["三维实用盐度场重构 S_hat<br>反演高盐水下层与中层低盐水舌分布"]
+        H4 --> O1 --- O2
     end
 
-    subgraph S5 ["5. 物理先验约束与自适应优化闭环"]
+    subgraph S5 [" "]
         direction TB
-        P1["<b>数据拟合保真损失 L_data</b><br>GLORYS12V1 3D 再分析真值全深度监督 (MSE)"]
-        P2["<b>Autograd 温度单调递减约束 L_phy,T</b><br>计算图解析求导 dT/dz，惩罚深层异常逆温"]
-        P3["<b>TEOS-10 层结稳定防倒置约束 L_phy,rho</b><br>全微分状态方程求密度与求导 drho/dz，严惩密度倒置"]
-        Opt["<b>自适应多目标对偶平衡与反传更新</b><br>动态学习物理损失与拟合损失权重，联合更新网络参数"]
-        P1 --> Opt
-        P2 --> Opt
-        P3 --> Opt
+        H5["5. 物理先验约束与自适应优化闭环"]
+        P1["数据拟合保真损失 L_data<br>GLORYS12V1 3D 再分析真值全深度监督 (MSE)"]
+        P2["Autograd 温度单调递减约束 L_phy,T<br>计算图解析求导 dT/dz，惩罚深层异常逆温"]
+        P3["TEOS-10 层结稳定防倒置约束 L_phy,rho<br>全微分状态方程求密度与求导 drho/dz，严惩密度倒置"]
+        Opt["自适应多目标对偶平衡与反传更新<br>动态学习物理损失与拟合损失权重，联合更新网络参数"]
+        H5 --> P1 --- P2 --- P3 ==> Opt
     end
 
-    S1 ==>|8 通道海表张量 X_surf| S2
-    S2 ==>|空间隐特征 Token F_surf| S3
-    S3 ==>|任意连续深度立体解码| S4
-    S4 ==>|三维物理场全域检验| S5
-    Opt -. 闭环物理梯度反传更新参数 .-> S2
+    I3 ==>|8 通道海表张量 X_surf| H2
+    E3 ==>|空间隐特征 Token F_surf| H3
+    D3 ==>|任意连续深度立体解码| H4
+    O2 ==>|三维物理场全域检验| H5
+    Opt -. 闭环物理梯度反传更新参数 .-> H2
 
-    classDef default font-size:22px;
-    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:4px,color:#0369A1,rx:14px,ry:14px,font-size:22px,font-weight:bold;
-    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:4px,color:#5B21B6,rx:14px,ry:14px,font-size:22px,font-weight:bold;
-    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:4px,color:#047857,rx:14px,ry:14px,font-size:22px,font-weight:bold;
-    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:4px,color:#B45309,rx:14px,ry:14px,font-size:22px,font-weight:bold;
-    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:4px,color:#BE123C,rx:14px,ry:14px,font-size:22px,font-weight:bold;
+    classDef default font-size:25px;
+    classDef headStyle1 fill:#0284C7,stroke:#0284C7,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
+    classDef headStyle2 fill:#7C3AED,stroke:#7C3AED,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
+    classDef headStyle3 fill:#059669,stroke:#059669,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
+    classDef headStyle4 fill:#D97706,stroke:#D97706,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
+    classDef headStyle5 fill:#E11D48,stroke:#E11D48,stroke-width:2px,color:#FFFFFF,rx:14px,ry:14px,font-size:26px,font-weight:normal;
+
+    classDef inputStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:3.5px,color:#0369A1,rx:14px,ry:14px,font-size:24px,font-weight:normal;
+    classDef encStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:3.5px,color:#5B21B6,rx:14px,ry:14px,font-size:24px,font-weight:normal;
+    classDef pinnStyle fill:#ECFDF5,stroke:#059669,stroke-width:3.5px,color:#047857,rx:14px,ry:14px,font-size:24px,font-weight:normal;
+    classDef outStyle fill:#FFFBEB,stroke:#D97706,stroke-width:3.5px,color:#B45309,rx:14px,ry:14px,font-size:24px,font-weight:normal;
+    classDef phyStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:3.5px,color:#BE123C,rx:14px,ry:14px,font-size:24px,font-weight:normal;
+
+    class H1 headStyle1;
+    class H2 headStyle2;
+    class H3 headStyle3;
+    class H4 headStyle4;
+    class H5 headStyle5;
 
     class I1,I2,I3 inputStyle;
     class E1,E2,E3 encStyle;
