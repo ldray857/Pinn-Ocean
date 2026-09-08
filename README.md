@@ -189,13 +189,15 @@ $$
 \mathcal{L}_{\mathrm{phy}, \rho} = \frac{1}{N} \sum_{i=1}^N \mathrm{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)
 $$
 
+Both physical constraints are evaluated pointwise across space and depth using 4-D continuous coordinate tensors $z_{\mathrm{pts}} \in \mathbb{R}^{B \times S \times D \times 1}$ with PyTorch Autograd, ensuring that localized thermal or density inversions are directly penalized rather than canceled out by horizontal averaging.
+
 **Adaptive Multi-Objective Balancing** ($\mathcal{L}_{\mathrm{total}}$):
 
 $$
-\mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2
+\mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(-\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2
 $$
 
-where $\omega_1, \omega_2$ are learnable dual parameters dynamically adjusted during optimization.
+where $\omega_1, \omega_2$ are learnable homoscedastic log-variance / dual parameters dynamically adjusted during optimization (with $[-10, 10]$ gradient clipping for numerical stability).
 
 ---
 
@@ -233,10 +235,13 @@ Pinn-Ocean/
 ├── tests/                     # Automated unit and integration test suite
 │   ├── __init__.py
 │   └── test_pipeline.py       # Comprehensive end-to-end verification without external data
-├── checkpoints/               # Trained model checkpoint weights (.pth)
-├── data/                      # Local NetCDF observation and reanalysis data
-│   └── 2020/                  # Downloaded 2020 5-parameter annual dataset
-├── results/                   # High-resolution (300 DPI) figures and plots
+├── checkpoints/               # Trained model checkpoint weights (.pth) (tracked via .gitkeep)
+│   └── .gitkeep
+├── data/                      # Local NetCDF observation and reanalysis data (tracked via .gitkeep)
+│   ├── .gitkeep
+│   └── 2020/                  # 2020 5-parameter annual dataset & pacific_reconstructed_3d.nc
+├── results/                   # High-resolution (300 DPI) figures and plots (tracked via .gitkeep)
+│   └── .gitkeep
 ├── download_data.py           # Automated data collection tool for Open Pacific CMEMS datasets
 ├── train.py                   # Model training entry point
 ├── evaluate.py                # Model evaluation and layer-wise validation script

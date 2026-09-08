@@ -192,13 +192,15 @@ $$
 \mathcal{L}_{\mathrm{phy}, \rho} = \frac{1}{N} \sum_{i=1}^N \mathrm{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)
 $$
 
+两项物理约束均基于 4 维连续坐标张量 $z_{\mathrm{pts}} \in \mathbb{R}^{B \times S \times D \times 1}$ 依托 PyTorch Autograd 在空间微元格点上逐点解析求导，确保局部逆温或密度倒置被严格单边惩罚，避免了因水平空间预先平均导致的物理悖论相互抵消漏洞。
+
 **自适应多目标联合优化**（$\mathcal{L}_{\mathrm{total}}$）：
 
 $$
-\mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2
+\mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(-\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2
 $$
 
-其中 $\omega_1, \omega_2$ 为可学习的对偶参数，在训练中自适应平衡数据保真度与物理约束。
+其中 $\omega_1, \omega_2$ 为可学习的同方差对偶变量（内置 $[-10, 10]$ 数值稳定截断保护），在反向传播中自适应动态平衡数据保真度（MSE）与物理约束项的梯度贡献。
 
 ---
 
@@ -236,10 +238,13 @@ Pinn-Ocean/
 ├── tests/                     # 自动化单元测试套件
 │   ├── __init__.py
 │   └── test_pipeline.py       # 硬件、Autograd、TEOS-10 及前向反向端到端测试
-├── checkpoints/               # 训练产出的最优模型权重 (.pth)
-├── data/                      # 真实海洋卫星观测与 GLORYS 3D 再分析数据 (NetCDF)
-│   └── 2020/                  # 2020 年度 5 核心要素已下载数据集
-├── results/                   # 自动输出的 300 DPI 高清科研图件与报表
+├── checkpoints/               # 训练产出的最优模型权重 (.pth) (通过 .gitkeep 追踪目录)
+│   └── .gitkeep
+├── data/                      # 真实海洋卫星观测与 GLORYS 3D 再分析数据 (NetCDF) (通过 .gitkeep 追踪)
+│   ├── .gitkeep
+│   └── 2020/                  # 2020 年度 5 核心要素及 pacific_reconstructed_3d.nc
+├── results/                   # 自动输出的 300 DPI 高清科研图件与报表 (通过 .gitkeep 追踪)
+│   └── .gitkeep
 ├── download_data.py           # CMEMS 开阔太平洋多源遥感与 3D 再分析数据自动化下载脚本
 ├── train.py                   # 完整模型训练主入口
 ├── evaluate.py                # 检查点评估与分层物理指标验证脚本
