@@ -90,27 +90,35 @@ To overcome the challenge of mapping 2-D sea surface observations to 3-D continu
 Table 2 Tensor dimensions and operator functionality across forward pass stages
 | Computational Stage | Core Module | Input Dimension | Output Dimension | Mathematical Operator & Dynamical Role |
 | :--- | :--- | :--- | :--- | :--- |
-| 1. Shallow Dynamical Extraction | Convolutional Stem | $(B, 8, H, W)$ | $(B, C_{\text{embed}}, H, W)$ | Dual convolutions with nonlinear activations to extract frontal shear gradients |
-| 2. Spatial Serialization | Flatten & Transpose | $(B, C_{\text{embed}}, H, W)$ | $(B, H\cdot W, C_{\text{embed}})$ | Reshapes spatial feature maps into 2-D token sequences |
-| 3. Shifted Self-Attention | Swin Transformer | $(B, H\cdot W, C_{\text{embed}})$ | $(B, H\cdot W, C_{\text{embed}})$ | Window and shifted-window self-attention to capture basin teleconnections |
-| 4. Spatial Point Sampling | Random Grid Sampler | $(B, H\cdot W, C_{\text{embed}})$ | $(B, S, C_{\text{embed}})$ | Randomly samples $S$ spatial points to bound autograd computational memory |
-| 5. Continuous Coordinate Binding | Cartesian Broadcast | Space $(B, S, C)$, Depth $(B, S, D, 1)$ | $(B, S, D, C_{\text{embed}}+1)$ | Binds surface spatial semantics with continuous vertical depth coordinates |
-| 6. Continuous Field Decoding | Physics Head | $(B, S, D, C_{\text{embed}}+1)$ | $(B, S, D, 2)$ | 4-layer MLP with Tanh activations, generating normalized T-S fields |
+| 1. Shallow Dynamical Extraction | Convolutional Stem | $(B, 8, H, W)$ | $`(B, C_{\text{embed}}, H, W)`$ | Dual convolutions with nonlinear activations to extract frontal shear gradients |
+| 2. Spatial Serialization | Flatten & Transpose | $`(B, C_{\text{embed}}, H, W)`$ | $`(B, H\cdot W, C_{\text{embed}})`$ | Reshapes spatial feature maps into 2-D token sequences |
+| 3. Shifted Self-Attention | Swin Transformer | $`(B, H\cdot W, C_{\text{embed}})`$ | $`(B, H\cdot W, C_{\text{embed}})`$ | Window and shifted-window self-attention to capture basin teleconnections |
+| 4. Spatial Point Sampling | Random Grid Sampler | $`(B, H\cdot W, C_{\text{embed}})`$ | $`(B, S, C_{\text{embed}})`$ | Randomly samples $S$ spatial points to bound autograd computational memory |
+| 5. Continuous Coordinate Binding | Cartesian Broadcast | Space $(B, S, C)$, Depth $(B, S, D, 1)$ | $`(B, S, D, C_{\text{embed}}+1)`$ | Binds surface spatial semantics with continuous vertical depth coordinates |
+| 6. Continuous Field Decoding | Physics Head | $`(B, S, D, C_{\text{embed}}+1)`$ | $(B, S, D, 2)$ | 4-layer MLP with Tanh activations, generating normalized T-S fields |
 | 7. Field Reorganization | Permute & Denorm | $(B, S, D, 2)$ | $(B, 2, D, S)$ | Restructures predictions into 3-D temperature $\hat{T}$ and salinity $\hat{S}$ |
-| 8. Analytical Physics Solving | Physics Engine | Predictions & Point Depths $z_{\mathrm{pts}}$ | Scalars $\mathcal{L}_{\mathrm{phy}, T}, \mathcal{L}_{\mathrm{phy}, \rho}$ | Pointwise analytical solving of $\frac{\partial \hat{T}_{b,s,k}}{\partial z_k}$ and $\frac{\partial \hat{\rho}_{b,s,k}}{\partial z_k}$ via Autograd |
-| 9. Adaptive Multi-Objective | Homoscedastic Weights | Data & Physics Losses | Scalar $\mathcal{L}_{\mathrm{total}}$ | Learns dual variables $\omega_1, \omega_2$ for stable Pareto convergence |
+| 8. Analytical Physics Solving | Physics Engine | Predictions & Point Depths $`z_{\mathrm{pts}}`$ | Scalars $`\mathcal{L}_{\mathrm{phy}, T}, \mathcal{L}_{\mathrm{phy}, \rho}`$ | Pointwise analytical solving of $`\frac{\partial \hat{T}_{b,s,k}}{\partial z_k}`$ and $`\frac{\partial \hat{\rho}_{b,s,k}}{\partial z_k}`$ via Autograd |
+| 9. Adaptive Multi-Objective | Homoscedastic Weights | Data & Physics Losses | Scalar $`\mathcal{L}_{\mathrm{total}}`$ | Learns dual variables $`\omega_1, \omega_2`$ for stable Pareto convergence |
 
 ### 2.2 Shallow Convolutional Dynamical Feature Extractor (Stem)
 Sea surface dynamical processes are governed by geostrophic balance and fluid continuity equations, with pronounced velocity shear and horizontal thermohaline gradients along eddy edges and frontal boundaries. Standard Vision Transformers commonly employ patch partitioning with non-overlapping strides, which severs the continuity of local fluid micro-elements. To preserve continuous spatial derivatives, the network front-end utilizes a lightweight dual-convolutional Stem that maintains the original spatial resolution $(H, W)$:
-$$\mathbf{F}_0 = \mathrm{GELU}\left(\mathrm{BN}\left(\mathrm{Conv}_{3\times 3}\left(\mathrm{GELU}\left(\mathrm{BN}\left(\mathrm{Conv}_{3\times 3}(\mathbf{X})\right)\right)\right)\right)\right)$$
-This module smoothly projects the 8-channel surface observations into the latent embedding dimension ($C_{\text{embed}} = 96$), preserving differential geometric structures of mesoscale eddies and water mass fronts.
+
+$$
+\mathbf{F}_0 = \mathrm{GELU}\left(\mathrm{BN}\left(\mathrm{Conv}_{3\times 3}\left(\mathrm{GELU}\left(\mathrm{BN}\left(\mathrm{Conv}_{3\times 3}(\mathbf{X})\right)\right)\right)\right)\right)
+$$
+
+This module smoothly projects the 8-channel surface observations into the latent embedding dimension ($`C_{\text{embed}} = 96`$), preserving differential geometric structures of mesoscale eddies and water mass fronts.
 
 ### 2.3 Shifted-Window Local Self-Attention Backbone (Swin Backbone)
 To capture basin-scale baroclinic teleconnections spanning hundreds of kilometers, the backbone incorporates shifted-window self-attention.
 
 #### (a) Window-Based Multi-Head Self-Attention (W-MSA)
 The 2-D feature map is partitioned into non-overlapping local windows (window size $M=4$ or $8$), within which self-attention is computed independently alongside continuous relative position bias matrices $\hat{B}$:
-$$\mathrm{Attention}(Q, K, V) = \mathrm{Softmax}\left(\frac{QK^T}{\sqrt{d_k}} + \hat{B}\right)V$$
+
+$$
+\mathrm{Attention}(Q, K, V) = \mathrm{Softmax}\left(\frac{QK^T}{\sqrt{d_k}} + \hat{B}\right)V
+$$
+
 This mechanism reduces computational complexity from global self-attention's quadratic $O((HW)^2)$ to locally linear $O(M^2 \cdot HW)$, reconciling high-resolution representation with computational tractability.
 
 #### (b) Shifted-Window Multi-Head Self-Attention (SW-MSA)
@@ -122,13 +130,21 @@ Consecutive Transformer blocks introduce a spatial cyclic shift of $\lfloor M/2 
 Due to the "spectral bias" of coordinate networks, standard multi-layer perceptrons struggle to capture sharp transitions and non-monotonic vertical ocean structures (such as subsurface salinity maxima at ~150 m and intermediate minima at ~650 m). To mitigate this, a multi-scale harmonic Fourier coordinate embedding module is formulated:  
 
 **Linear Dimensionless Depth**:  
-$z_{\mathrm{lin}} = z / z_{\mathrm{max}} \in [0, 1]$;  
+
+$$
+z_{\mathrm{lin}} = \frac{z}{z_{\mathrm{max}}} \in [0, 1]
+$$
 
 **Oceanic Logarithmic Progressive Depth**:  
-$z_{\mathrm{log}} = \frac{\ln(1 + z / z_{\mathrm{scale}})}{\ln(1 + z_{\mathrm{max}} / z_{\mathrm{scale}})} \in [0, 1]$ (with $z_{\mathrm{scale}} = 15.0\,\text{m}$), allocating over 30% of dynamic numerical resolution to the surface mixed layer and upper thermocline;  
+
+$$
+z_{\mathrm{log}} = \frac{\ln(1 + z / z_{\mathrm{scale}})}{\ln(1 + z_{\mathrm{max}} / z_{\mathrm{scale}})} \in [0, 1]
+$$
+
+(with $`z_{\mathrm{scale}} = 15.0\,\text{m}`$), allocating over 30% of dynamic numerical resolution to the surface mixed layer and upper thermocline;  
 
 **Multi-Band Fourier Harmonic Expansion**:  
-Depths are projected across $K=8$ octave scales onto sinusoidal tensors $[\sin(2^k \pi z), \cos(2^k \pi z)]$, yielding an input dimension of $2 + 4K = 34$, which is mapped via a compact two-layer linear network to latent depth embedding vectors $\mathbf{F}_{\mathrm{depth}} \in \mathbb{R}^{D \times d_{\mathrm{depth}}}$.
+Depths are projected across $K=8$ octave scales onto sinusoidal tensors $`[\sin(2^k \pi z), \cos(2^k \pi z)]`$, yielding an input dimension of $2 + 4K = 34$, which is mapped via a compact two-layer linear network to latent depth embedding vectors $`\mathbf{F}_{\mathrm{depth}} \in \mathbb{R}^{D \times d_{\mathrm{depth}}}`$.
 
 #### (b) DeepONet Operator Fusion and Decoupled Dual Prediction Heads
 Inspired by deep operator network (DeepONet) theory, the architecture fuses sea surface spatial dynamical tokens with continuous vertical coordinate features via dual-branch tensor products and residual connections:  
@@ -139,9 +155,11 @@ Inspired by deep operator network (DeepONet) theory, the architecture fuses sea 
 
 **Nonlinear Operator Fusion**:  
 
-  $$\mathbf{F}_{\mathrm{fused}} = \mathrm{SiLU}\left(\mathbf{F}_{\mathrm{branch}} \odot \mathbf{F}_{\mathrm{trunk}} + \mathbf{F}_{\mathrm{branch}} + \mathbf{F}_{\mathrm{trunk}}\right)$$  
+$$
+\mathbf{F}_{\mathrm{fused}} = \mathrm{SiLU}\left(\mathbf{F}_{\mathrm{branch}} \odot \mathbf{F}_{\mathrm{trunk}} + \mathbf{F}_{\mathrm{branch}} + \mathbf{F}_{\mathrm{trunk}}\right)
+$$
 
-  Multiplicative coupling via Hadamard product and residual identity skip connections combines surface dynamical forcing with continuous vertical basis functions. Dropout is strictly avoided throughout the decoding pathway to guarantee determinism and continuous differentiability.  
+Multiplicative coupling via Hadamard product and residual identity skip connections combines surface dynamical forcing with continuous vertical basis functions. Dropout is strictly avoided throughout the decoding pathway to guarantee determinism and continuous differentiability.  
 
 **Decoupled Dual Prediction Heads**: Addressing the physical asymmetry where temperature decreases monotonically while salinity exhibits a pronounced non-monotonic "S"-shaped curve, decoupled MLP heads are implemented: a 2-layer MLP (128→64→1) for temperature, and a higher-capacity 3-layer MLP (128→128→64→1) for salinity, providing the nonlinear expressiveness required to capture subsurface salinity extrema.
 
@@ -151,37 +169,71 @@ Conventional one-sided penalty formulations risk passive deactivation where loss
 
 ### 3.1 Sea Level Anomaly (SLA) Baroclinic Steric Height Integration Constraint
 Sea surface dynamic height anomalies reflect whole-water-column thermal expansion and haline contraction. Using the TEOS-10 equation of state, in-situ density $\rho$ is calculated analytically, subtracting the horizontal reference profile $\bar{\rho}(z)$ to obtain density anomaly $\rho'$, which is integrated hydrostatically over depth:
-$$\Delta h_{\mathrm{steric}}(x, y) = -\frac{1}{\rho_0} \int_{0}^{H} \rho'(x, y, z) \, \mathrm{d}z$$
+
+$$
+\Delta h_{\mathrm{steric}}(x, y) = -\frac{1}{\rho_0} \int_{0}^{H} \rho'(x, y, z) \, \mathrm{d}z
+$$
+
 This steric height anomaly is constrained against satellite altimeter observations via mean squared error:
-$$\mathcal{L}_{\mathrm{sla}} = \frac{1}{B \cdot S} \sum_{b=1}^B \sum_{s=1}^S \left( \Delta h_{\mathrm{steric}, b, s} - \mathrm{SLA}_{\mathrm{obs}, b, s} \right)^2$$
+
+$$
+\mathcal{L}_{\mathrm{sla}} = \frac{1}{B \cdot S} \sum_{b=1}^B \sum_{s=1}^S \left( \Delta h_{\mathrm{steric}, b, s} - \mathrm{SLA}_{\mathrm{obs}, b, s} \right)^2
+$$
 
 ### 3.2 Unified Coordinate Dirichlet Surface Boundary Anchoring (Dirichlet BC)
 At the sea surface interface ($z = 0.5\,\text{m}$), reconstructed temperature and salinity must strictly close upon satellite SST and SSS observations. To prevent conflicting gradient trajectories arising from differing normalization scales between 3-D volumes and 2-D surface fields, surface satellite truth values are projected into the 3-D normalized coordinate frame:
-$$\mathrm{SST}_{\mathrm{target\_norm}} = \frac{\mathrm{SST}_{\mathrm{phys}} - \mu_{T3D}}{\sigma_{T3D}}, \quad \mathrm{SSS}_{\mathrm{target\_norm}} = \frac{\mathrm{SSS}_{\mathrm{phys}} - \mu_{S3D}}{\sigma_{S3D}}$$
-$$\mathcal{L}_{\mathrm{surf}} = \left\| \hat{T}_{\mathrm{norm}}(z_0) - \mathrm{SST}_{\mathrm{target\_norm}} \right\|^2 + \left\| \hat{S}_{\mathrm{norm}}(z_0) - \mathrm{SSS}_{\mathrm{target\_norm}} \right\|^2$$
-This anchors the physical surface boundary condition $\hat{T}_{\mathrm{phys}}(z_0) \equiv \mathrm{SST}_{\mathrm{phys}}$, eliminating dimensional mismatch artifacts.
+
+$$
+\mathrm{SST}_{\mathrm{target\_norm}} = \frac{\mathrm{SST}_{\mathrm{phys}} - \mu_{T3D}}{\sigma_{T3D}}, \quad \mathrm{SSS}_{\mathrm{target\_norm}} = \frac{\mathrm{SSS}_{\mathrm{phys}} - \mu_{S3D}}{\sigma_{S3D}}
+$$
+
+$$
+\mathcal{L}_{\mathrm{surf}} = \left\| \hat{T}_{\mathrm{norm}}(z_0) - \mathrm{SST}_{\mathrm{target\_norm}} \right\|^2 + \left\| \hat{S}_{\mathrm{norm}}(z_0) - \mathrm{SSS}_{\mathrm{target\_norm}} \right\|^2
+$$
+
+This anchors the physical surface boundary condition $`\hat{T}_{\mathrm{phys}}(z_0) \equiv \mathrm{SST}_{\mathrm{phys}}`$, eliminating dimensional mismatch artifacts.
 
 ### 3.3 Continuous Profile First-Order Differential Gradient and Curvature Supervision
 To prevent discrete vertical training from smoothing out profile inflections and extrema, first-order finite difference gradient supervision is applied across 100 m intervals:
-$$\mathcal{L}_{\mathrm{grad}} = \left\| \frac{\partial \hat{T}}{\partial z_{100}} - \frac{\partial T_{\mathrm{gt}}}{\partial z_{100}} \right\|^2 + 2 \cdot \left\| \frac{\partial \hat{S}}{\partial z_{100}} - \frac{\partial S_{\mathrm{gt}}}{\partial z_{100}} \right\|^2$$
+
+$$
+\mathcal{L}_{\mathrm{grad}} = \left\| \frac{\partial \hat{T}}{\partial z_{100}} - \frac{\partial T_{\mathrm{gt}}}{\partial z_{100}} \right\|^2 + 2 \cdot \left\| \frac{\partial \hat{S}}{\partial z_{100}} - \frac{\partial S_{\mathrm{gt}}}{\partial z_{100}} \right\|^2
+$$
+
 Applying double weighting to the salinity gradient guides the network to accurately reconstruct sharp transitions between high-salinity Subtropical Underwater (STUW) and low-salinity North Pacific Intermediate Water (NPIW).
 
 ### 3.4 0–30 m Mixed Layer Isothermal Homogenization Regularization
-The ocean surface mixed layer exhibits minimal vertical temperature gradient due to wind stirring and convective overturning. Within depths $z \le 30\,\text{m}$, a small gradient threshold $\epsilon_{\mathrm{mld}} = 0.02\,^\circ\text{C}/\text{m}$ is enforced via an isothermal penalty:
-$$\mathcal{L}_{\mathrm{mld}} = \frac{1}{N_{\mathrm{mld}}} \sum_{z_k \le 30\,\mathrm{m}} \mathrm{ReLU}\left( \left| \frac{\partial \hat{T}_{\mathrm{phys}}}{\partial z} \right| - \epsilon_{\mathrm{mld}} \right)$$
+The ocean surface mixed layer exhibits minimal vertical temperature gradient due to wind stirring and convective overturning. Within depths $z \le 30\,\text{m}$, a small gradient threshold $`\epsilon_{\mathrm{mld}} = 0.02\,^\circ\text{C}/\text{m}`$ is enforced via an isothermal penalty:
+
+$$
+\mathcal{L}_{\mathrm{mld}} = \frac{1}{N_{\mathrm{mld}}} \sum_{z_k \le 30\,\mathrm{m}} \mathrm{ReLU}\left( \left| \frac{\partial \hat{T}_{\mathrm{phys}}}{\partial z} \right| - \epsilon_{\mathrm{mld}} \right)
+$$
+
 This eliminates artificial near-surface gradient curl, enforcing a physically realistic homogeneous mixed layer.
 
 ### 3.5 TEOS-10 Equation of State and Smooth Stratification Stability Constraint
-Using the TEOS-10 nonlinear equation of state $\hat{\rho} = f_{\mathrm{TEOS\text{-}10}}(\hat{S}, \hat{T}, P)$, thermal expansion $\alpha$ and haline contraction $\beta$ coefficients are computed pointwise:
-$$\frac{\partial \rho}{\partial z} \approx -\alpha \frac{\partial T}{\partial z} + \beta \frac{\partial S}{\partial z}$$
+Using the TEOS-10 nonlinear equation of state $`\hat{\rho} = f_{\mathrm{TEOS\text{-}10}}(\hat{S}, \hat{T}, P)`$, thermal expansion $\alpha$ and haline contraction $\beta$ coefficients are computed pointwise:
+
+$$
+\frac{\partial \rho}{\partial z} \approx -\alpha \frac{\partial T}{\partial z} + \beta \frac{\partial S}{\partial z}
+$$
+
 Static gravitational stability requires potential density to increase monotonically with depth. Replacing non-differentiable hard clipping with a smooth Softplus operator:
-$$\mathcal{L}_{\mathrm{stab}} = \frac{1}{B \cdot S \cdot D} \sum_{b,s,k} \mathrm{Softplus}\left(- 10 \cdot \frac{\partial \hat{\rho}_{b, s, k}}{\partial z_k}\right)$$
+
+$$
+\mathcal{L}_{\mathrm{stab}} = \frac{1}{B \cdot S \cdot D} \sum_{b,s,k} \mathrm{Softplus}\left(- 10 \cdot \frac{\partial \hat{\rho}_{b, s, k}}{\partial z_k}\right)
+$$
+
 This penalizes unphysical density inversions while providing smooth, continuous backpropagation gradients throughout the water column.
 
 ### 3.6 Adaptive Multi-Objective Optimization via Homoscedastic Uncertainty
-The data fidelity loss $\mathcal{L}_{\mathrm{data}}$ and active physics loss $\mathcal{L}_{\mathrm{phy}}$ (comprising $\mathcal{L}_{\mathrm{sla}}, \mathcal{L}_{\mathrm{surf}}, \mathcal{L}_{\mathrm{grad}}, \mathcal{L}_{\mathrm{mld}}, \mathcal{L}_{\mathrm{stab}}$) are dynamically balanced using homoscedastic uncertainty weighting:
-$$\mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(-\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2$$
-where $\omega_1, \omega_2$ are learnable dual parameters initialized to $0.0$ and clamped to $[-10, 10]$, guiding optimization smoothly along the Pareto front.
+The data fidelity loss $`\mathcal{L}_{\mathrm{data}}`$ and active physics loss $`\mathcal{L}_{\mathrm{phy}}`$ (comprising $`\mathcal{L}_{\mathrm{sla}}`$, $`\mathcal{L}_{\mathrm{surf}}`$, $`\mathcal{L}_{\mathrm{grad}}`$, $`\mathcal{L}_{\mathrm{mld}}`$, $`\mathcal{L}_{\mathrm{stab}}`$) are dynamically balanced using homoscedastic uncertainty weighting:
+
+$$
+\mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(-\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2
+$$
+
+where $`\omega_1, \omega_2`$ are learnable dual parameters initialized to $0.0$ and clamped to $[-10, 10]$, guiding optimization smoothly along the Pareto front.
 
 ## 4 Experimental Implementation and Optimization Strategies
 
