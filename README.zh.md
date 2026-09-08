@@ -169,7 +169,7 @@ $$
 潜空间表征采用 **DeepONet 算子双支路融合**（Branch 网络提取表层动力特征，Trunk 网络编码垂向基函数）：
 
 $$
-\mathbf{F}_{\mathrm{fused}} = \operatorname{SiLU}\left(\mathbf{F}_{\mathrm{branch}} \odot \mathbf{F}_{\mathrm{trunk}} + \mathbf{F}_{\mathrm{branch}} + \mathbf{F}_{\mathrm{trunk}}\right)
+\mathbf{F}_{\mathrm{fused}} = \mathrm{SiLU}\left(\mathbf{F}_{\mathrm{branch}} \odot \mathbf{F}_{\mathrm{trunk}} + \mathbf{F}_{\mathrm{branch}} + \mathbf{F}_{\mathrm{trunk}}\right)
 $$
 
 后端接入**解耦温盐双预测头**：独立温度预测头与更高容量的三层 MLP 盐度预测头，成功攻克了非单调“S”型盐跃层（次表层高盐核与中层低盐极小值）的精细重构。
@@ -211,14 +211,14 @@ $$
 惩罚上混合层微元内超过 $0.02^\circ\mathrm{C}/\mathrm{m}$ 的异常垂直温差，消除近表层数值翘尾效应：
 
 $$
-\mathcal{L}_{\mathrm{mld}} = \frac{1}{N_{\mathrm{mld}}} \sum_{z_k \le 30\,\mathrm{m}} \operatorname{ReLU}\left( \left| \frac{\partial \hat{T}_{\mathrm{phys}}}{\partial z} \right| - 0.02^\circ\mathrm{C}/\mathrm{m} \right)
+\mathcal{L}_{\mathrm{mld}} = \frac{1}{N_{\mathrm{mld}}} \sum_{z_k \le 30\,\mathrm{m}} \mathrm{ReLU}\left( \left| \frac{\partial \hat{T}_{\mathrm{phys}}}{\partial z} \right| - 0.02^\circ\mathrm{C}/\mathrm{m} \right)
 $$
 
 **5. TEOS-10 平滑层结稳定性与防密度倒置约束**（$\mathcal{L}_{\mathrm{stab}}$）：
 基于连续可微的 Softplus 算子对重力不稳定施加自适应平滑惩罚：
 
 $$
-\mathcal{L}_{\mathrm{stab}} = \frac{1}{N} \sum_{i=1}^N \operatorname{Softplus}\left(- 10 \cdot \frac{\partial \hat{\rho}_i}{\partial z}\right)
+\mathcal{L}_{\mathrm{stab}} = \frac{1}{N} \sum_{i=1}^N \mathrm{Softplus}\left(- 10 \cdot \frac{\partial \hat{\rho}_i}{\partial z}\right)
 $$
 
 **6. 自适应多目标联合优化**（$\mathcal{L}_{\mathrm{total}}$）：
