@@ -12,9 +12,9 @@ import torch.nn as nn
 class AdaptiveMultiObjectiveLoss(nn.Module):
     """
     Adaptive Multi-Objective Joint Optimization:
-    L_total = exp(-w1) * L_data + w1 + exp(w2) * L_phy + w2
+    L_total = exp(-w1) * L_data + w1 + exp(-w2) * L_phy + w2
     
-    where w1, w2 are learnable dual variables balancing data fidelity
+    where w1, w2 are learnable homoscedastic log-variance / dual variables balancing data fidelity
     and thermodynamic regularization without manual weight tuning.
     """
     def __init__(self, init_w1=0.0, init_w2=0.0):
@@ -33,8 +33,10 @@ class AdaptiveMultiObjectiveLoss(nn.Module):
             w1_val: Current value of w1
             w2_val: Current value of w2
         """
+        w1_clamped = torch.clamp(self.w1, min=-10.0, max=10.0)
+        w2_clamped = torch.clamp(self.w2, min=-10.0, max=10.0)
         total_loss = (
-            torch.exp(-self.w1) * loss_data + self.w1 +
-            torch.exp(self.w2) * loss_phy + self.w2
+            torch.exp(-w1_clamped) * loss_data + w1_clamped +
+            torch.exp(-w2_clamped) * loss_phy + w2_clamped
         )
-        return total_loss, self.w1.item(), self.w2.item()
+        return total_loss, w1_clamped.item(), w2_clamped.item()

@@ -40,16 +40,18 @@ wheels/
 *.csv
 *.tsv
 # Data files and directories
-data/
-/data/
-data/**
+data/*
+!data/.gitkeep
 /datasets/
 !pinn_ocean/datasets/
 
 # Logs and outputs
 runs/
 logs/
-results/
+results/*
+!results/.gitkeep
+checkpoints/*
+!checkpoints/.gitkeep
 *.log
 wandb/
 

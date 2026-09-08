@@ -71,8 +71,7 @@ def predict_and_export():
         sys.exit(1)
 
     # 1. Load Dataset
-    mode_arg = 'test' if args.mode == 'all' else args.mode
-    dataset = OceanContinuousDataset(sla_path, gt_path, mode=mode_arg)
+    dataset = OceanContinuousDataset(sla_path, gt_path, mode=args.mode)
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
 
     stats = dataset.stats
@@ -201,7 +200,7 @@ def predict_and_export():
         os.makedirs(out_dir, exist_ok=True)
 
     print(f"\nWriting reconstructed dataset to NetCDF4 file: {args.output_file} ...")
-    out_ds.to_netcdf(args.output_file, engine="h5netcdf")
+    out_ds.to_netcdf(args.output_file, engine="netcdf4")
 
     file_size_mb = os.path.getsize(args.output_file) / (1024 * 1024)
     print(f"--> [Success] Export complete! File size: {file_size_mb:.2f} MB")

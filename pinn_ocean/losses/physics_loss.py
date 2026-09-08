@@ -35,51 +35,75 @@ class OceanPhysicsLoss(nn.Module):
             loss_physics: Total physics penalty loss
             loss_dict: Dictionary recording individual components (L_phy_T, L_phy_rho)
         """
-        # Squeeze spatial dimensions to compute depth-dependent gradient
-        # shape: (B, 2, D, S) -> (D,)
+        # shape: (B, 2, D, S) or (B, 2, D, H, W)
         if preds.dim() == 5:
             # (B, 2, D, H, W) -> flatten H, W to S
             B, C, D, H, W = preds.shape
             preds_flat = preds.view(B, C, D, -1)
         else:
             preds_flat = preds
+            B, C, D, S = preds.shape
 
-        temp_profile = preds_flat[:, 0, :, :].mean(dim=(0, 2))  # (D,)
-        sal_profile = preds_flat[:, 1, :, :].mean(dim=(0, 2))   # (D,)
+        if z_norm.dim() == 4:
+            # Pointwise Autograd: computes exact derivative at every spatial-depth element (B, S, D)
+            temp_pts = preds_flat[:, 0, :, :].permute(0, 2, 1)  # (B, S, D)
+            sal_pts = preds_flat[:, 1, :, :].permute(0, 2, 1)   # (B, S, D)
 
-        # 1. Autograd analytical vertical temperature gradient: d T / d z
-        grad_t = torch.autograd.grad(
-            outputs=temp_profile.sum(),
-            inputs=z_norm,
-            create_graph=True,
-            retain_graph=True,
-            only_inputs=True
-        )[0]
+            grad_t = torch.autograd.grad(
+                outputs=temp_pts,
+                inputs=z_norm,
+                grad_outputs=torch.ones_like(temp_pts),
+                create_graph=True,
+                retain_graph=True,
+                only_inputs=True
+            )[0]
+            loss_phy_t = torch.mean(torch.relu(grad_t + self.temp_grad_threshold))
 
-        # Penalize non-physical temperature increase with depth
-        loss_phy_t = torch.mean(torch.relu(grad_t + self.temp_grad_threshold))
+            loss_phy_rho = torch.tensor(0.0, device=preds.device)
+            if self.enable_density and stats is not None and z_raw is not None:
+                temp_phys = temp_pts * stats['std_t'] + stats['mean_t']
+                sal_phys = sal_pts * stats['std_s'] + stats['mean_s']
+                depth_phys = z_raw.view(1, 1, D)
 
-        # 2. Seawater Stratification Stability (Anti-Density Inversion)
-        loss_phy_rho = torch.tensor(0.0, device=preds.device)
-        if self.enable_density and stats is not None and z_raw is not None:
-            # Un-normalize to physical units for accurate density equation
-            temp_phys = temp_profile * stats['std_t'] + stats['mean_t']
-            sal_phys = sal_profile * stats['std_s'] + stats['mean_s']
-            
-            # Compute differentiable in-situ seawater density
-            rho = approx_seawater_density(sal_phys, temp_phys, z_raw)  # (D,)
-            
-            # Autograd derivative of density with respect to depth: d rho / d z
-            grad_rho = torch.autograd.grad(
-                outputs=rho.sum(),
+                rho = approx_seawater_density(sal_phys, temp_phys, depth_phys)
+                grad_rho = torch.autograd.grad(
+                    outputs=rho,
+                    inputs=z_norm,
+                    grad_outputs=torch.ones_like(rho),
+                    create_graph=True,
+                    retain_graph=True,
+                    only_inputs=True
+                )[0]
+                loss_phy_rho = torch.mean(torch.relu(-grad_rho))
+
+        else:
+            # Profile-level Autograd: z_norm is (D,)
+            temp_profile = preds_flat[:, 0, :, :].mean(dim=(0, 2))  # (D,)
+            sal_profile = preds_flat[:, 1, :, :].mean(dim=(0, 2))   # (D,)
+
+            grad_t = torch.autograd.grad(
+                outputs=temp_profile.sum(),
                 inputs=z_norm,
                 create_graph=True,
                 retain_graph=True,
                 only_inputs=True
             )[0]
-            
-            # Penalize density decrease with depth (density inversion)
-            loss_phy_rho = torch.mean(torch.relu(-grad_rho))
+            loss_phy_t = torch.mean(torch.relu(grad_t + self.temp_grad_threshold))
+
+            loss_phy_rho = torch.tensor(0.0, device=preds.device)
+            if self.enable_density and stats is not None and z_raw is not None:
+                temp_phys = temp_profile * stats['std_t'] + stats['mean_t']
+                sal_phys = sal_profile * stats['std_s'] + stats['mean_s']
+                rho = approx_seawater_density(sal_phys, temp_phys, z_raw)
+
+                grad_rho = torch.autograd.grad(
+                    outputs=rho.sum(),
+                    inputs=z_norm,
+                    create_graph=True,
+                    retain_graph=True,
+                    only_inputs=True
+                )[0]
+                loss_phy_rho = torch.mean(torch.relu(-grad_rho))
 
         total_physics_loss = loss_phy_t + loss_phy_rho
         loss_dict = {

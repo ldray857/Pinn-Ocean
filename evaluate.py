@@ -23,6 +23,8 @@ def parse_args():
                         help="Path to folder containing NetCDF datasets (default: auto-detect data/2020 or data)")
     parser.add_argument("--checkpoint", type=str, default="checkpoints/swin_ocean_pinn_best.pth",
                         help="Path to trained model weights")
+    parser.add_argument("--mode", type=str, default="test", choices=["train", "val", "test", "all"],
+                        help="Dataset partition to evaluate ('train', 'val', 'test', or 'all')")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
 
@@ -33,7 +35,7 @@ def evaluate():
 
     print("==================================================================")
     print("                Swin-Ocean-PINN Model Evaluation                  ")
-    print(f" Device: {device} | Checkpoint: {args.checkpoint}")
+    print(f" Device: {device} | Checkpoint: {args.checkpoint} | Partition: {args.mode.upper()}")
     print(f" Data Directory: {os.path.abspath(args.data_dir)}")
     print("==================================================================")
 
@@ -41,9 +43,9 @@ def evaluate():
     gt_path = os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal_2013_2021.nc")
 
     try:
-        test_dataset = OceanContinuousDataset(sla_path, gt_path, mode='test')
+        test_dataset = OceanContinuousDataset(sla_path, gt_path, mode=args.mode)
         test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
-        print(f"[Dataset] Test samples: {len(test_dataset)}")
+        print(f"[Dataset] {args.mode.upper()} samples: {len(test_dataset)}")
     except Exception as e:
         print(f"[Warning] Could not load test dataset ({e}).")
         return

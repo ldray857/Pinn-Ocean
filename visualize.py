@@ -49,8 +49,8 @@ def parse_args():
         help="Directory where output figure PNGs will be saved"
     )
     parser.add_argument(
-        "--mode", type=str, default="test", choices=["train", "val", "test"],
-        help="Dataset subset partition to evaluate ('train', 'val', or 'test')"
+        "--mode", type=str, default="test", choices=["train", "val", "test", "all"],
+        help="Dataset subset partition to evaluate ('train', 'val', 'test', or 'all')"
     )
     parser.add_argument(
         "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu",

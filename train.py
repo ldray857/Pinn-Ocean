@@ -26,6 +26,9 @@ def parse_args():
                         help="Path to folder containing NetCDF datasets (default: auto-detect data/2020 or data)")
     parser.add_argument("--sla_path", type=str, default=None, help="Custom path to SLA .nc file")
     parser.add_argument("--gt_path", type=str, default=None, help="Custom path to GLORYS 3D .nc file")
+    parser.add_argument("--sst_path", type=str, default=None, help="Custom path to SST .nc file")
+    parser.add_argument("--sss_path", type=str, default=None, help="Custom path to SSS .nc file")
+    parser.add_argument("--wind_path", type=str, default=None, help="Custom path to Wind .nc file")
     parser.add_argument("--epochs", type=int, default=200, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size for training")
     parser.add_argument("--lr", type=float, default=3e-4, help="Initial learning rate")
@@ -51,8 +54,20 @@ def main():
     gt_path = args.gt_path or os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal_2013_2021.nc")
 
     try:
-        train_dataset = OceanContinuousDataset(sla_path, gt_path, mode='train')
-        val_dataset = OceanContinuousDataset(sla_path, gt_path, mode='val')
+        train_dataset = OceanContinuousDataset(
+            sla_path, gt_path,
+            sst_path=args.sst_path,
+            sss_path=args.sss_path,
+            wind_path=args.wind_path,
+            mode='train'
+        )
+        val_dataset = OceanContinuousDataset(
+            sla_path, gt_path,
+            sst_path=args.sst_path,
+            sss_path=args.sss_path,
+            wind_path=args.wind_path,
+            mode='val'
+        )
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
         print(f"[Dataset] Train samples: {len(train_dataset)} | Val samples: {len(val_dataset)}")
@@ -109,7 +124,11 @@ def main():
             # Prepare continuous vertical depth coordinate with gradient tracking
             z_raw = train_dataset.get_depth_tensor().to(device)
             z_norm = (z_raw - z_raw.mean()) / (z_raw.std() + 1e-6)
-            z_norm.requires_grad_(True)
+            
+            # Pointwise z coordinate tensor for exact spatial-depth Autograd derivatives
+            B_curr = x_8ch.shape[0]
+            D_curr = z_raw.shape[0]
+            z_norm_pts = z_norm.view(1, 1, D_curr, 1).repeat(B_curr, args.sampling_points, 1, 1).requires_grad_(True)
 
             # Random spatial sampling to maintain efficient VRAM footprint
             total_points = y_3d.shape[3] * y_3d.shape[4]
@@ -118,15 +137,15 @@ def main():
             optimizer.zero_grad()
 
             # Forward pass on sampled points
-            preds = model(x_8ch, z_norm, sample_idx=sample_idx)
-            y_target = y_3d.view(y_3d.shape[0], 2, y_3d.shape[2], -1)[:, :, :, sample_idx]
+            preds = model(x_8ch, z_norm_pts, sample_idx=sample_idx)
+            y_target = y_3d.view(B_curr, 2, D_curr, -1)[:, :, :, sample_idx]
 
             # 1. Data-driven fidelity loss
             loss_data = mse_loss_fn(preds, y_target)
 
-            # 2. Physics-informed constraint loss
+            # 2. Physics-informed constraint loss (pointwise thermal & stratification stability)
             loss_phy, loss_dict = phy_loss_fn(
-                preds, z_norm, stats=train_dataset.stats, z_raw=z_raw
+                preds, z_norm_pts, stats=train_dataset.stats, z_raw=z_raw
             )
 
             # 3. Joint adaptive multi-objective loss

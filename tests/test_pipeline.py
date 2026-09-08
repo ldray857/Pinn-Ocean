@@ -96,21 +96,28 @@ def run_unit_tests():
         'mean_s': 34.5, 'std_s': 0.5
     }
 
+    # Test 5a: Pointwise Autograd (per-sample per-depth physical gradient)
+    z_norm_pts = z_norm.view(1, 1, D, 1).repeat(B, 500, 1, 1).requires_grad_(True)
+    preds_sampled_pts = model(x_8ch, z_norm_pts, sample_idx=sample_idx)
+    loss_data_pts = mse_loss_fn(preds_sampled_pts, synthetic_target)
+    loss_phy_pts, loss_dict_pts = phy_loss_fn(preds_sampled_pts, z_norm_pts, stats=synthetic_stats, z_raw=z_raw)
+    total_loss_pts, w1_pts, w2_pts = adaptive_loss_fn(loss_data_pts, loss_phy_pts)
+
+    print(f"      [Pointwise] Data Loss: {loss_data_pts.item():.5f} | Phy Loss: {loss_phy_pts.item():.5f} (Temp: {loss_dict_pts['loss_phy_temp'].item():.5f}, Density: {loss_dict_pts['loss_phy_density'].item():.5f})")
+    print(f"      [Pointwise] Adaptive Loss: {total_loss_pts.item():.5f}")
+
     optimizer = optim.AdamW(list(model.parameters()) + list(adaptive_loss_fn.parameters()), lr=1e-3)
     optimizer.zero_grad()
-
-    loss_data = mse_loss_fn(preds_sampled, synthetic_target)
-    loss_phy, loss_dict = phy_loss_fn(preds_sampled, z_norm, stats=synthetic_stats, z_raw=z_raw)
-    total_loss, w1, w2 = adaptive_loss_fn(loss_data, loss_phy)
-
-    print(f"      Data Loss (MSE): {loss_data.item():.5f}")
-    print(f"      Physics Loss: {loss_phy.item():.5f} (Temp: {loss_dict['loss_phy_temp'].item():.5f}, Density: {loss_dict['loss_phy_density'].item():.5f})")
-    print(f"      Adaptive Total Loss: {total_loss.item():.5f}")
-
-    total_loss.backward()
+    total_loss_pts.backward()
     optimizer.step()
+    print("      --> Pointwise backward pass and parameter update executed successfully.")
 
-    print("      --> Backward pass and parameter update executed successfully.")
+    # Test 5b: Profile-level Autograd (fresh forward pass after parameter update)
+    optimizer.zero_grad()
+    preds_fresh = model(x_8ch, z_norm, sample_idx=sample_idx)
+    loss_phy_prof, _ = phy_loss_fn(preds_fresh, z_norm, stats=synthetic_stats, z_raw=z_raw)
+    loss_phy_prof.backward()
+    print("      --> Profile-level backward pass executed successfully.")
     print("\n==================================================================")
     print(" [PASSED] All Pinn-Ocean core components verified successfully!   ")
     print("==================================================================")

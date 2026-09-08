@@ -27,86 +27,163 @@ class OceanContinuousDataset(Dataset):
         0: Potential Temperature (0-1000m)
         1: Practical Salinity (0-1000m)
     """
-    def __init__(self, sla_path, gt_path, mode='train', train_ratio=0.8, val_ratio=0.15):
+    def __init__(self, sla_path, gt_path, sst_path=None, sss_path=None, wind_path=None,
+                 mode='train', train_ratio=0.75, val_ratio=0.15):
         super().__init__()
         self.mode = mode
         
         if not (os.path.exists(sla_path) and os.path.exists(gt_path)):
             raise FileNotFoundError(
-                f"Data files not found at {sla_path} or {gt_path}. Please check data path configuration."
+                f"Required data files not found at {sla_path} or {gt_path}. Please check data path configuration."
             )
+
+        data_dir = os.path.dirname(os.path.abspath(sla_path))
+        # Auto-detect auxiliary satellite datasets if not explicitly specified
+        if sst_path is None:
+            candidate = os.path.join(data_dir, "pacific_sst_2013_2021.nc")
+            if os.path.exists(candidate):
+                sst_path = candidate
+
+        if sss_path is None:
+            candidate = os.path.join(data_dir, "pacific_sss_2013_2021.nc")
+            if os.path.exists(candidate):
+                sss_path = candidate
+
+        if wind_path is None:
+            candidate = os.path.join(data_dir, "pacific_wind_2013_2021.nc")
+            if os.path.exists(candidate):
+                wind_path = candidate
 
         # 1. Load NetCDF datasets
         self.sla_ds_full = xr.open_dataset(sla_path)
         self.gt_ds_full = xr.open_dataset(gt_path)
 
         total_months = len(self.gt_ds_full.time)
-        n_train = int(total_months * train_ratio)
-        n_val = int(total_months * val_ratio)
+        n_train = max(1, int(total_months * train_ratio))
+        n_val = max(1, int(total_months * val_ratio)) if total_months > 2 else 0
+        if n_train + n_val >= total_months and total_months > 2:
+            n_train = total_months - n_val - 1
 
         train_idx = slice(0, n_train)
         val_idx = slice(n_train, n_train + n_val)
         test_idx = slice(n_train + n_val, total_months)
 
-        # 2. Compute normalization stats strictly from training partition
-        train_gt = self.gt_ds_full.isel(time=train_idx)
-        train_sla = self.sla_ds_full.isel(time=train_idx)
-
-        train_sla_aligned = train_sla.interp(
-            longitude=train_gt.longitude,
-            latitude=train_gt.latitude,
-            method="linear"
+        # 2. Spatially & temporally align observations to GLORYS 3D target grid
+        # Align SLA
+        sla_aligned_full = self.sla_ds_full.interp(
+            time=self.gt_ds_full.time,
+            latitude=self.gt_ds_full.latitude,
+            longitude=self.gt_ds_full.longitude,
+            method="linear",
+            kwargs={"fill_value": "extrapolate"}
         )
+        sla_all = np.nan_to_num(sla_aligned_full.sla.values, nan=0.0)
 
-        temp_train = np.nan_to_num(train_gt.thetao.values, nan=0.0)
-        sal_train = np.nan_to_num(train_gt.so.values, nan=0.0)
-        sla_train = np.nan_to_num(train_sla_aligned.sla.values, nan=0.0)
+        # Align SST
+        if sst_path and os.path.exists(sst_path):
+            sst_ds = xr.open_dataset(sst_path)
+            sst_aligned = sst_ds.interp(
+                time=self.gt_ds_full.time,
+                latitude=self.gt_ds_full.latitude,
+                longitude=self.gt_ds_full.longitude,
+                method="linear",
+                kwargs={"fill_value": "extrapolate"}
+            )
+            sst_var = "analysed_sst" if "analysed_sst" in sst_aligned else list(sst_aligned.data_vars.keys())[0]
+            sst_all = np.nan_to_num(sst_aligned[sst_var].values, nan=0.0)
+            if sst_all.mean() > 100.0:  # Convert Kelvin to Celsius
+                sst_all = sst_all - 273.15
+        else:
+            sst_all = np.nan_to_num(self.gt_ds_full.thetao.values[:, 0, :, :], nan=0.0)
 
+        # Align SSS
+        if sss_path and os.path.exists(sss_path):
+            sss_ds = xr.open_dataset(sss_path)
+            sss_aligned = sss_ds.interp(
+                time=self.gt_ds_full.time,
+                latitude=self.gt_ds_full.latitude,
+                longitude=self.gt_ds_full.longitude,
+                method="linear",
+                kwargs={"fill_value": "extrapolate"}
+            )
+            sss_var = "sss" if "sss" in sss_aligned else list(sss_aligned.data_vars.keys())[0]
+            sss_all = np.nan_to_num(sss_aligned[sss_var].values, nan=0.0)
+        else:
+            sss_all = np.nan_to_num(self.gt_ds_full.so.values[:, 0, :, :], nan=0.0)
+
+        # Align Wind U & V
+        if wind_path and os.path.exists(wind_path):
+            wind_ds = xr.open_dataset(wind_path)
+            wind_aligned = wind_ds.interp(
+                time=self.gt_ds_full.time,
+                latitude=self.gt_ds_full.latitude,
+                longitude=self.gt_ds_full.longitude,
+                method="linear",
+                kwargs={"fill_value": "extrapolate"}
+            )
+            u_var = "eastward_wind" if "eastward_wind" in wind_aligned else list(wind_aligned.data_vars.keys())[0]
+            v_var = "northward_wind" if "northward_wind" in wind_aligned else list(wind_aligned.data_vars.keys())[1]
+            wind_u_all = np.nan_to_num(wind_aligned[u_var].values, nan=0.0)
+            wind_v_all = np.nan_to_num(wind_aligned[v_var].values, nan=0.0)
+        else:
+            wind_u_all = np.zeros_like(sla_all)
+            wind_v_all = np.zeros_like(sla_all)
+
+        temp_all = np.nan_to_num(self.gt_ds_full.thetao.values, nan=0.0)
+        sal_all = np.nan_to_num(self.gt_ds_full.so.values, nan=0.0)
+
+        # 3. Compute normalization statistics strictly from the training partition
         self.stats = {
-            'mean_sst': float(temp_train[:, 0, :, :].mean()),
-            'std_sst': float(temp_train[:, 0, :, :].std() + 1e-6),
-            'mean_sla': float(sla_train.mean()),
-            'std_sla': float(sla_train.std() + 1e-6),
-            'mean_sss': float(sal_train[:, 0, :, :].mean()),
-            'std_sss': float(sal_train[:, 0, :, :].std() + 1e-6),
-            'mean_t': float(temp_train.mean()),
-            'std_t': float(temp_train.std() + 1e-6),
-            'mean_s': float(sal_train.mean()),
-            'std_s': float(sal_train.std() + 1e-6),
+            'mean_sst': float(sst_all[train_idx].mean()),
+            'std_sst': float(sst_all[train_idx].std() + 1e-6),
+            'mean_sla': float(sla_all[train_idx].mean()),
+            'std_sla': float(sla_all[train_idx].std() + 1e-6),
+            'mean_sss': float(sss_all[train_idx].mean()),
+            'std_sss': float(sss_all[train_idx].std() + 1e-6),
+            'mean_wind_u': float(wind_u_all[train_idx].mean()),
+            'std_wind_u': float(wind_u_all[train_idx].std() + 1e-6),
+            'mean_wind_v': float(wind_v_all[train_idx].mean()),
+            'std_wind_v': float(wind_v_all[train_idx].std() + 1e-6),
+            'mean_t': float(temp_all[train_idx].mean()),
+            'std_t': float(temp_all[train_idx].std() + 1e-6),
+            'mean_s': float(sal_all[train_idx].mean()),
+            'std_s': float(sal_all[train_idx].std() + 1e-6),
         }
 
-        # 3. Extract subset for specified mode
-        current_idx = train_idx if mode == 'train' else (val_idx if mode == 'val' else test_idx)
+        # 4. Extract subset for specified mode
+        if mode == 'train':
+            current_idx = train_idx
+        elif mode == 'val':
+            current_idx = val_idx
+        elif mode == 'test':
+            current_idx = test_idx
+        elif mode == 'all':
+            current_idx = slice(0, total_months)
+        else:
+            raise ValueError(f"Unknown mode: {mode}. Choose from 'train', 'val', 'test', 'all'.")
+
         self.gt_ds = self.gt_ds_full.isel(time=current_idx)
-        self.sla_ds = self.sla_ds_full.isel(time=current_idx)
-
-        self.sla_ds_aligned = self.sla_ds.interp(
-            longitude=self.gt_ds.longitude,
-            latitude=self.gt_ds.latitude,
-            method="linear"
-        )
-
-        self.sla_raw = np.nan_to_num(self.sla_ds_aligned.sla.values, nan=0.0)
-        temp_all = np.nan_to_num(self.gt_ds.thetao.values, nan=0.0)
-        sal_all = np.nan_to_num(self.gt_ds.so.values, nan=0.0)
-
-        self.sst_raw = temp_all[:, 0, :, :]
-        self.sss_raw = sal_all[:, 0, :, :]
-        self.depths = self.gt_ds.depth.values
         self.times = self.gt_ds.time.values
+        self.depths = self.gt_ds.depth.values
 
-        # 4. Normalized Spatial Coordinates
+        self.sst_raw = sst_all[current_idx]
+        self.sla_raw = sla_all[current_idx]
+        self.sss_raw = sss_all[current_idx]
+        self.wind_u_raw = wind_u_all[current_idx]
+        self.wind_v_raw = wind_v_all[current_idx]
+
+        # 5. Normalized Spatial Coordinates
         lon_vals = self.gt_ds.longitude.values
         lat_vals = self.gt_ds.latitude.values
         lon_grid, lat_grid = np.meshgrid(lon_vals, lat_vals)
         self.lon_norm = (lon_grid - lon_vals.min()) / (lon_vals.max() - lon_vals.min() + 1e-6)
         self.lat_norm = (lat_grid - lat_vals.min()) / (lat_vals.max() - lat_vals.min() + 1e-6)
 
-        # 5. Normalized Labels
-        self.temp_norm = (temp_all - self.stats['mean_t']) / self.stats['std_t']
-        self.sal_norm = (sal_all - self.stats['mean_s']) / self.stats['std_s']
+        # 6. Normalized Labels
+        self.temp_norm = (temp_all[current_idx] - self.stats['mean_t']) / self.stats['std_t']
+        self.sal_norm = (sal_all[current_idx] - self.stats['mean_s']) / self.stats['std_s']
 
-        # 6. Normalized Cyclic Month Encoding
+        # 7. Normalized Cyclic Month Encoding
         self.months_norm = np.array([
             float(t.astype('datetime64[M]').astype(int) % 12 + 1) / 12.0
             for t in self.times
@@ -120,9 +197,12 @@ class OceanContinuousDataset(Dataset):
         sla = (self.sla_raw[idx] - self.stats['mean_sla']) / self.stats['std_sla']
         sss = (self.sss_raw[idx] - self.stats['mean_sss']) / self.stats['std_sss']
 
-        # Placeholder for real wind observations if not yet extracted
-        wind_u = np.zeros_like(sla)
-        wind_v = np.zeros_like(sla)
+        std_u = self.stats['std_wind_u']
+        wind_u = (self.wind_u_raw[idx] - self.stats['mean_wind_u']) / std_u if std_u > 1e-4 else self.wind_u_raw[idx]
+
+        std_v = self.stats['std_wind_v']
+        wind_v = (self.wind_v_raw[idx] - self.stats['mean_wind_v']) / std_v if std_v > 1e-4 else self.wind_v_raw[idx]
+
         lon = self.lon_norm
         lat = self.lat_norm
         month = np.full_like(sla, self.months_norm[idx])

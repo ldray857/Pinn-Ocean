@@ -84,7 +84,7 @@ class SwinOceanPINN(nn.Module):
             out: (B, 2, D, S) or (B, 2, D, H, W) reconstructed thermohaline field
         """
         B, C, H, W = x.shape
-        D = z.shape[0]
+        D = z.shape[2] if z.dim() == 4 else z.shape[0]
 
         # 1. Surface Spatial Feature Extraction
         feat_map = self.stem(x)  # (B, embed_dim, H, W)
@@ -97,9 +97,9 @@ class SwinOceanPINN(nn.Module):
         # Flatten spatial dimensions into Token sequence: (B, H*W, embed_dim)
         tokens = feat_map.flatten(2).permute(0, 2, 1)
 
-        # Swin Attention processing
-        tokens = self.stage1_block1(tokens)
-        tokens = self.stage1_block2(tokens)
+        # Swin Attention processing with explicit input resolution
+        tokens = self.stage1_block1(tokens, input_resolution=(H, W))
+        tokens = self.stage1_block2(tokens, input_resolution=(H, W))
         tokens = self.norm(tokens)
 
         # 2. Spatial Sampling branch for memory efficiency
@@ -113,8 +113,16 @@ class SwinOceanPINN(nn.Module):
         # 3. Continuous Coordinate Fusion
         # Expand spatial tokens to (B, S, D, embed_dim)
         feat_expanded = selected_tokens.unsqueeze(2).expand(-1, -1, D, -1)
+
         # Expand continuous depth z to (B, S, D, 1)
-        z_expanded = z.view(1, 1, D, 1).expand(B, S, D, 1)
+        if z.dim() == 4:
+            # Pointwise z coordinate of shape (B, S, D, 1) or broadcastable
+            if z.shape[0] != B or z.shape[1] != S:
+                z_expanded = z.expand(B, S, D, 1)
+            else:
+                z_expanded = z
+        else:
+            z_expanded = z.view(1, 1, D, 1).expand(B, S, D, 1)
 
         # Concatenate features and depth coordinate
         combined_coords = torch.cat([feat_expanded, z_expanded], dim=-1)  # (B, S, D, embed_dim + 1)
