@@ -161,7 +161,7 @@ $$
 [\hat{T}, \hat{S}] = \mathcal{G}_\theta\left(\mathbf{X}_{\mathrm{surf}}, \boldsymbol{\gamma}(z)\right)
 $$
 
-where $\mathbf{X}_{\mathrm{surf}} \in \mathbb{R}^{B \times 8 \times H \times W}$ encodes the 8 surface channels with cyclic seasonal thermal phase $\tau_{\mathrm{season}} = -\cos\left(2\pi \frac{\text{month} - 2}{12}\right)$, and $\boldsymbol{\gamma}(z)$ represents the **`DepthFourierEmbedding`** multi-scale harmonic coordinate embedding ($z_{\mathrm{lin}}$, $z_{\mathrm{log}}$, $\sin(2^k\pi z)$, $\cos(2^k\pi z)$ across 8 octaves) to overcome coordinate spectral bias.
+where $`\mathbf{X}_{\mathrm{surf}} \in \mathbb{R}^{B \times 8 \times H \times W}`$ encodes the 8 surface channels with cyclic seasonal thermal phase $`\tau_{\mathrm{season}} = -\cos\left(2\pi \frac{\text{month} - 2}{12}\right)`$, and $`\boldsymbol{\gamma}(z)`$ represents the **`DepthFourierEmbedding`** multi-scale harmonic coordinate embedding ($`z_{\mathrm{lin}}`$, $`z_{\mathrm{log}}`$, $`\sin(2^k\pi z)`$, $`\cos(2^k\pi z)`$ across 8 octaves) to overcome coordinate spectral bias.
 
 The latent representation is fused via a **DeepONet Trunk-Branch Operator Fusion** module with multiplicative and residual connections:
 

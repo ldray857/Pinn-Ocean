@@ -164,7 +164,7 @@ $$
 [\hat{T}, \hat{S}] = \mathcal{G}_\theta\left(\mathbf{X}_{\mathrm{surf}}, \boldsymbol{\gamma}(z)\right)
 $$
 
-其中 $\mathbf{X}_{\mathrm{surf}} \in \mathbb{R}^{B \times 8 \times H \times W}$ 编码了 8 通道海表动力要素，时序通道采用严密遵循北太平洋热力循环物理规律的周期余弦相位编码 $\tau_{\mathrm{season}} = -\cos\left(2\pi \frac{\text{month} - 2}{12}\right)$（2 月极冷为 -1，8 月极热为 +1，彻底杜绝冬半年温度外推畸变）；$\boldsymbol{\gamma}(z)$ 为 **`DepthFourierEmbedding`** 多尺度谐波傅里叶坐标嵌入模块（结合线性归一化水深、海洋对数水深及 8 个倍频程的正余弦展开），克服了传统 MLP 的坐标谱偏差。
+其中 $`\mathbf{X}_{\mathrm{surf}} \in \mathbb{R}^{B \times 8 \times H \times W}`$ 编码了 8 通道海表动力要素，时序通道采用严密遵循北太平洋热力循环物理规律的周期余弦相位编码 $`\tau_{\mathrm{season}} = -\cos\left(2\pi \frac{\text{month} - 2}{12}\right)`$ （2 月极冷为 -1，8 月极热为 +1，彻底杜绝冬半年温度外推畸变）； $`\boldsymbol{\gamma}(z)`$ 为 **`DepthFourierEmbedding`** 多尺度谐波傅里叶坐标嵌入模块（结合线性归一化水深、海洋对数水深及 8 个倍频程的正余弦展开），克服了传统 MLP 的坐标谱偏差。
 
 潜空间表征采用 **DeepONet 算子双支路融合**（Branch 网络提取表层动力特征，Trunk 网络编码垂向基函数）：
 
