@@ -35,7 +35,23 @@ def parse_args():
     )
     parser.add_argument(
         "--output_file", type=str, default="data/2020/pacific_reconstructed_3d.nc",
-        help="Path where reconstructed NetCDF will be saved"
+        help="Path where reconstructed NetCDF (aligned with GLORYS) will be saved"
+    )
+    parser.add_argument(
+        "--export_regular", action="store_true", default=True,
+        help="Simultaneously export a strictly regular (equal-interval) vertical grid NetCDF for ArcGIS Pro Voxel layer (default: True)"
+    )
+    parser.add_argument(
+        "--no_regular", action="store_false", dest="export_regular",
+        help="Disable regular grid export"
+    )
+    parser.add_argument(
+        "--regular_step", type=float, default=10.0,
+        help="Vertical depth interval in meters for regular grid (default: 10.0m, giving 101 layers from 0 to 1000m)"
+    )
+    parser.add_argument(
+        "--output_regular_file", type=str, default=None,
+        help="Custom output file path for regular NetCDF (default: auto-appends '_regular.nc')"
     )
     parser.add_argument(
         "--mode", type=str, default="test", choices=["train", "val", "test", "all"],
@@ -102,8 +118,18 @@ def predict_and_export():
 
     model.eval()
 
-    # 3. Continuous Depth Coordinate Tensor
+    # 3. Continuous Depth Coordinate Tensors
+    # Mode A: Original GLORYS depths (35 layers, irregular, for ground truth comparison)
     z_raw = dataset.get_depth_tensor().to(device)
+
+    # Mode B: Strictly regular equal-interval depth coordinates (for perfect ArcGIS Pro Voxel rendering)
+    if args.export_regular:
+        z_reg_vals = np.arange(0.0, 1000.0 + args.regular_step / 2.0, args.regular_step, dtype=np.float32)
+        z_reg = torch.from_numpy(z_reg_vals).to(device)
+        all_pred_thetao_reg = []
+        all_pred_so_reg = []
+    else:
+        z_reg_vals, z_reg = None, None
 
     all_pred_thetao = []
     all_pred_so = []
@@ -114,7 +140,7 @@ def predict_and_export():
     with torch.no_grad():
         for step, (x_8ch, y_3d) in enumerate(data_loader, 1):
             x_8ch = x_8ch.to(device)
-            # Full grid volumetric reconstruction: (1, 2, D, H, W)
+            # 1. Evaluate on GLORYS-aligned depth grid: (1, 2, D, H, W)
             preds = model(x_8ch, z_raw, sample_idx=None)
 
             # Un-normalize to physical dimensions: °C and PSU
@@ -127,6 +153,14 @@ def predict_and_export():
             all_pred_so.append(pred_s)
             all_true_thetao.append(true_t)
             all_true_so.append(true_s)
+
+            # 2. Evaluate on strictly regular equal-interval depth grid
+            if args.export_regular:
+                preds_reg = model(x_8ch, z_reg, sample_idx=None)
+                pred_t_reg = preds_reg[0, 0].cpu().numpy() * stats['std_t'] + stats['mean_t']
+                pred_s_reg = preds_reg[0, 1].cpu().numpy() * stats['std_s'] + stats['mean_s']
+                all_pred_thetao_reg.append(pred_t_reg)
+                all_pred_so_reg.append(pred_s_reg)
 
             print(f"  [Step {step:02d}/{len(data_loader):02d}] Reconstructed 3D field for time step: {str(times[step-1])[:10]}")
 
@@ -144,8 +178,7 @@ def predict_and_export():
                 {
                     "long_name": "Reconstructed Sea Water Potential Temperature (Swin-Ocean-PINN)",
                     "standard_name": "sea_water_potential_temperature",
-                    "units": "degrees_C",
-                    "_FillValue": -9999.0
+                    "units": "degrees_C"
                 }
             ),
             "reconstructed_so": (
@@ -154,8 +187,7 @@ def predict_and_export():
                 {
                     "long_name": "Reconstructed Sea Water Practical Salinity (Swin-Ocean-PINN)",
                     "standard_name": "sea_water_practical_salinity",
-                    "units": "psu",
-                    "_FillValue": -9999.0
+                    "units": "psu"
                 }
             ),
             "ground_truth_thetao": (
@@ -163,8 +195,7 @@ def predict_and_export():
                 all_true_thetao,
                 {
                     "long_name": "GLORYS12V1 Reference Potential Temperature",
-                    "units": "degrees_C",
-                    "_FillValue": -9999.0
+                    "units": "degrees_C"
                 }
             ),
             "ground_truth_so": (
@@ -172,16 +203,15 @@ def predict_and_export():
                 all_true_so,
                 {
                     "long_name": "GLORYS12V1 Reference Practical Salinity",
-                    "units": "psu",
-                    "_FillValue": -9999.0
+                    "units": "psu"
                 }
             )
         },
         coords={
-            "time": times,
-            "depth": ("depth", depths, {"units": "m", "positive": "down", "standard_name": "depth"}),
-            "latitude": ("latitude", latitudes, {"units": "degrees_north", "standard_name": "latitude"}),
-            "longitude": ("longitude", longitudes, {"units": "degrees_east", "standard_name": "longitude"})
+            "time": ("time", times, {"standard_name": "time", "axis": "T"}),
+            "depth": ("depth", depths, {"units": "m", "positive": "down", "standard_name": "depth", "axis": "Z"}),
+            "latitude": ("latitude", latitudes, {"units": "degrees_north", "standard_name": "latitude", "axis": "Y"}),
+            "longitude": ("longitude", longitudes, {"units": "degrees_east", "standard_name": "longitude", "axis": "X"})
         },
         attrs={
             "title": "Pinn-Ocean 3-D Pacific Ocean Thermohaline Reconstruction",
@@ -193,19 +223,108 @@ def predict_and_export():
         }
     )
 
-    # 5. Export to NetCDF4
+    # 5. Export to NetCDF4 (Fully compatible with ArcGIS Pro Voxel Layer & Multidimensional Raster)
     out_dir = os.path.dirname(args.output_file)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
 
+    # Encoding configuration strictly compliant with ArcGIS Pro Voxel requirements:
+    # 1. Coordinate dimensions (depth, latitude, longitude) must NOT contain _FillValue attribute
+    # 2. Time coordinate must be float64 with standard CF units (avoids int64 incompatibility)
+    # 3. Data variables store float32 with standard _FillValue = -9999.0
+    encoding = {
+        var: {"_FillValue": -9999.0, "dtype": "float32"} for var in out_ds.data_vars
+    }
+    encoding.update({
+        "depth": {"_FillValue": None, "dtype": "float32"},
+        "latitude": {"_FillValue": None, "dtype": "float32"},
+        "longitude": {"_FillValue": None, "dtype": "float32"},
+        "time": {"_FillValue": None, "dtype": "float64"}
+    })
+
     print(f"\nWriting reconstructed dataset to NetCDF4 file: {args.output_file} ...")
-    out_ds.to_netcdf(args.output_file, engine="netcdf4")
+    out_ds.to_netcdf(args.output_file, engine="netcdf4", encoding=encoding)
 
     file_size_mb = os.path.getsize(args.output_file) / (1024 * 1024)
-    print(f"--> [Success] Export complete! File size: {file_size_mb:.2f} MB")
-    print(f"    Dimensions: {dict(out_ds.dims)}")
+    print(f"--> [Success] Aligned NetCDF Export complete! File size: {file_size_mb:.2f} MB")
+    print(f"    Dimensions: {dict(out_ds.sizes)}")
     print(f"    Temperature Range: {float(all_pred_thetao.min()):.2f}°C ~ {float(all_pred_thetao.max()):.2f}°C")
     print(f"    Salinity Range   : {float(all_pred_so.min()):.2f} PSU ~ {float(all_pred_so.max()):.2f} PSU")
+
+    # 6. Export Strictly Regular Equal-Interval NetCDF4 for ArcGIS Pro Voxel (Zero Warning, True Proportions)
+    if args.export_regular and z_reg_vals is not None:
+        all_pred_thetao_reg = np.stack(all_pred_thetao_reg, axis=0)
+        all_pred_so_reg = np.stack(all_pred_so_reg, axis=0)
+
+        reg_file = args.output_regular_file or (
+            args.output_file[:-3] + "_regular.nc" if args.output_file.endswith(".nc") else args.output_file + "_regular.nc"
+        )
+
+        reg_ds = xr.Dataset(
+            data_vars={
+                "reconstructed_thetao": (
+                    ("time", "depth", "latitude", "longitude"),
+                    all_pred_thetao_reg,
+                    {
+                        "long_name": "Reconstructed Potential Temperature (Equal-Interval PINN)",
+                        "standard_name": "sea_water_potential_temperature",
+                        "units": "degrees_C",
+                        "actual_range": np.array([float(all_pred_thetao_reg.min()), float(all_pred_thetao_reg.max())], dtype=np.float32)
+                    }
+                ),
+                "reconstructed_so": (
+                    ("time", "depth", "latitude", "longitude"),
+                    all_pred_so_reg,
+                    {
+                        "long_name": "Reconstructed Practical Salinity (Equal-Interval PINN)",
+                        "standard_name": "sea_water_practical_salinity",
+                        "units": "psu",
+                        "actual_range": np.array([float(all_pred_so_reg.min()), float(all_pred_so_reg.max())], dtype=np.float32)
+                    }
+                )
+            },
+            coords={
+                "time": ("time", times, {"standard_name": "time", "axis": "T"}),
+                "depth": ("depth", z_reg_vals, {
+                    "units": "m",
+                    "positive": "down",
+                    "standard_name": "depth",
+                    "axis": "Z",
+                    "step": f"{args.regular_step}m"
+                }),
+                "latitude": ("latitude", latitudes, {"units": "degrees_north", "standard_name": "latitude", "axis": "Y"}),
+                "longitude": ("longitude", longitudes, {"units": "degrees_east", "standard_name": "longitude", "axis": "X"})
+            },
+            attrs={
+                "title": "Pinn-Ocean 3-D Pacific Regular Equal-Interval Thermohaline Reconstruction",
+                "institution": "Zhejiang University, School of Earth Sciences",
+                "program": "Zeng Xianzi Top-notch Innovation Talent Cultivation Program",
+                "model": "Swin-Ocean-PINN (Continuous Depth PINN Representation)",
+                "description": f"Strictly equal-interval vertical coordinate (0-1000m, step={args.regular_step}m) optimized for ArcGIS Pro Voxel Layer with zero distortion.",
+                "conventions": "CF-1.8"
+            }
+        )
+
+        reg_encoding = {
+            var: {"_FillValue": -9999.0, "dtype": "float32"} for var in reg_ds.data_vars
+        }
+        reg_encoding.update({
+            "depth": {"_FillValue": None, "dtype": "float32"},
+            "latitude": {"_FillValue": None, "dtype": "float32"},
+            "longitude": {"_FillValue": None, "dtype": "float32"},
+            "time": {"_FillValue": None, "dtype": "float64"}
+        })
+
+        print(f"\nWriting strictly regular equal-interval dataset to NetCDF4: {reg_file} ...")
+        reg_ds.to_netcdf(reg_file, engine="netcdf4", encoding=reg_encoding)
+
+        reg_size_mb = os.path.getsize(reg_file) / (1024 * 1024)
+        print(f"--> [Success] Regular Voxel NetCDF Export complete! File size: {reg_size_mb:.2f} MB")
+        print(f"    Dimensions: {dict(reg_ds.sizes)}")
+        print(f"    Depth Resolution: Strictly regular {args.regular_step}m ({len(z_reg_vals)} layers: 0.0m ~ {z_reg_vals[-1]}m)")
+        print(f"    Temperature Range: {float(all_pred_thetao_reg.min()):.2f}°C ~ {float(all_pred_thetao_reg.max()):.2f}°C")
+        print(f"    Salinity Range   : {float(all_pred_so_reg.min()):.2f} PSU ~ {float(all_pred_so_reg.max()):.2f} PSU")
+
     print("=" * 70)
 
 

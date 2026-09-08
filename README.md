@@ -306,7 +306,7 @@ pip install -r requirements.txt
 
 ---
 
-## 6. Pipeline Experiments & Verification (Two-Year Dataset as Example)
+## 6. Experiments and Verification (2017–2020 Four-Year Data)
 
 ### 6.1 Data Acquisition
 
@@ -316,8 +316,8 @@ The project provides standard automated scripts to subset and download multi-sou
 # Preview subsetting parameters without downloading
 python download_data.py --dry_run
 
-# Download 2019–2020 two-year (24-month) all 5 variables (SLA, GLORYS 3D, SST, SSS, Wind)
-python download_data.py --output_dir data/2019_2020 --start_time 2019-01-01 --end_time 2020-12-31 --targets all
+# Download 2017–2020 four-year (48-month) all 5 variables (SLA, GLORYS 3D, SST, SSS, Wind)
+python download_data.py --output_dir data/2017_2020 --start_time 2017-01-01 --end_time 2020-12-31 --targets all
 ```
 
 ### 6.2 Code Self-Inspection
@@ -327,35 +327,42 @@ python demo_test.py
 ```
 
 ### 6.3 Model Training
-Train on the 2019–2020 two-year dataset with active physics constraints:
+Train on the 2017–2020 four-year dataset with active physics constraints:
 ```bash
-# Train on 2019-2020 two-year dataset (24 months: 18 train, 3 val, 3 test)
-python train.py --data_dir data/2019_2020 --epochs 100 --batch_size 4 --lr 3e-4
+# Train on 2017-2020 four-year dataset (48 months: 36 train, 7 val, 5 test)
+python train.py --data_dir data/2017_2020 --epochs 100 --batch_size 4 --lr 3e-4
 
 # Optional: Log training progress to file
-python train.py --data_dir data/2019_2020 --epochs 100 --batch_size 4 | Tee-Object -FilePath "train_2019_2020.log"
+python train.py --data_dir data/2017_2020 --epochs 100 --batch_size 4 | Tee-Object -FilePath "train_2017_2020.log"
 ```
 
-### 6.4 Model Evaluation
-Evaluate a trained model checkpoint on the test set partition:
+### 6.4 Model Evaluation & Latest Benchmark Results
+Evaluate a trained model checkpoint on the independent test set partition:
 ```bash
-python evaluate.py --data_dir data/2019_2020 --checkpoint checkpoints/swin_ocean_pinn_best.pth --mode test
+python evaluate.py --data_dir data/2017_2020 --checkpoint checkpoints/swin_ocean_pinn_best.pth --mode test
 ```
 
-### 6.5 Full 3-D Field Reconstruction & NetCDF4 Export
-Reconstruct continuous 3-D potential temperature and salinity fields and export CF-1.8 compliant NetCDF4 assets for NASA Panoply, ArcGIS Pro, and QGIS:
-```bash
-# Reconstruct all 24 months continuous 4D volume
-python predict.py --data_dir data/2019_2020 --output_file data/2019_2020/pacific_reconstructed_3d.nc --mode all
+**2017–2020 Benchmark Evaluation Results**:
 
-# Reconstruct independent test partition only
-python predict.py --data_dir data/2019_2020 --output_file data/2019_2020/pacific_reconstructed_3d_test.nc --mode test
+| Ocean Variable | 2019–2020 Baseline | 2017–2020 Latest Model | Relative Performance Gain |
+| :--- | :--- | :--- | :--- |
+| **Potential Temperature** | $\mathrm{RMSE} = 2.3551^\circ\mathrm{C}, R^2 = 0.8489$ | **$\mathrm{RMSE} = 1.6906^\circ\mathrm{C}, R^2 = 0.9427$** | **28.2% error reduction, $R^2$ exceeds 0.94** |
+| **Practical Salinity** | $\mathrm{RMSE} = 0.1672\,\mathrm{PSU}, R^2 = 0.6400$ | **$\mathrm{RMSE} = 0.1130\,\mathrm{PSU}, R^2 = 0.8608$** | **32.4% error reduction, $R^2$ improved by >22%** |
+
+### 6.5 Full 3-D Field Reconstruction & Dual NetCDF4 Asset Export
+The pipeline automatically exports two complementary CF-1.8 standard NetCDF4 data assets:
+1. **GLORYS-Aligned Asset (35 layers)**: Exactly aligned with GLORYS12V1 vertical grid with both predictions and ground truth, ideal for 2D multidimensional raster slicing and residual analysis;
+2. **Strictly Regular Voxel Asset (101 layers, 10m interval)**: Exploits continuous-coordinate PINN representations to reconstruct strictly equal-interval 10m vertical voxels, natively compatible with ArcGIS Pro 3.7 Voxel Layer without vertical distortion or irregular warnings.
+
+```bash
+# Export both aligned and 10m regular voxel NetCDF4 files in one pass
+python predict.py --data_dir data/2017_2020 --checkpoint checkpoints/swin_ocean_pinn_best.pth --output_file data/2017_2020/pacific_reconstructed_3d_test.nc --mode test --regular_step 10.0
 ```
 
 ### 6.6 Visualization Plotting
 Generate publication-quality 300 DPI figures (vertical profiles, T-S water mass consistency diagram, hexbin scatter density with $R^2$, and MLD scatter validation):
 ```bash
-python visualize.py --data_dir data/2019_2020 --mode test --output_dir results
+python visualize.py --data_dir data/2017_2020 --checkpoint checkpoints/swin_ocean_pinn_best.pth --output_dir results --mode test
 ```
 
 ---
