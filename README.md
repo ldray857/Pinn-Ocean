@@ -310,7 +310,7 @@ pip install -r requirements.txt
 
 ### 6.1 Data Acquisition
 
-The project provides standard automated scripts to subset and download multi-source satellite observations and 3-D reanalysis for the Northwest Pacific open ocean ($145^\circ\text{E} - 165^\circ\text{E}, 30^\circ\text{N} - 40^\circ\text{N}$, depth $0.49 \sim 1000\,\mathrm{m}$):
+The project provides standard automated scripts to subset and download multi-source satellite observations and 3-D reanalysis for the Northwest Pacific open ocean (145°E–165°E, 30°N–40°N, depth 0.49–1000 m):
 
 ```bash
 # Preview subsetting parameters without downloading
