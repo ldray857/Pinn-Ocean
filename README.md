@@ -153,15 +153,23 @@ flowchart TD
 
 </div>
 
-### 3.1 Core Forward Mapping Formulation
+### 3.1 Core Forward Mapping Formulation & Neural Operator Fusion
 
-The network fuses 2-D sea surface dynamics with continuous vertical coordinate $z$:
+The network models the 3-D ocean reconstruction as a neural operator problem fusing 2-D sea surface dynamics with continuous vertical depth $z \in [0, 1000\,\mathrm{m}]$:
 
 $$
-[\hat{T}, \hat{S}] = f_\theta(\text{SST}, \text{SLA}, \text{SSS}, \text{SSW}_U, \text{SSW}_V, \text{Lon}, \text{Lat}, \text{Month}, z)
+[\hat{T}, \hat{S}] = \mathcal{G}_\theta\left(\mathbf{X}_{\mathrm{surf}}, \boldsymbol{\gamma}(z)\right)
 $$
 
-where $z \in [0, 1000\text{ m}]$ acts as an explicit independent variable.
+where $\mathbf{X}_{\mathrm{surf}} \in \mathbb{R}^{B \times 8 \times H \times W}$ encodes the 8 surface channels with cyclic seasonal thermal phase $\tau_{\mathrm{season}} = -\cos\left(2\pi \frac{\text{month} - 2}{12}\right)$, and $\boldsymbol{\gamma}(z)$ represents the **`DepthFourierEmbedding`** multi-scale harmonic coordinate embedding ($z_{\mathrm{lin}}$, $z_{\mathrm{log}}$, $\sin(2^k\pi z)$, $\cos(2^k\pi z)$ across 8 octaves) to overcome coordinate spectral bias.
+
+The latent representation is fused via a **DeepONet Trunk-Branch Operator Fusion** module with multiplicative and residual connections:
+
+$$
+\mathbf{F}_{\mathrm{fused}} = \operatorname{SiLU}\left(\mathbf{F}_{\mathrm{branch}} \odot \mathbf{F}_{\mathrm{trunk}} + \mathbf{F}_{\mathrm{branch}} + \mathbf{F}_{\mathrm{trunk}}\right)
+$$
+
+followed by **decoupled dual prediction heads**: a dedicated temperature head and an expanded 3-layer MLP salinity head capable of reconstructing non-monotonic S-shaped haloclines.
 
 ### 3.2 Shifted Window Self-Attention (Swin Transformer)
 
@@ -173,31 +181,50 @@ $$
 
 where $B$ is the learnable relative position bias matrix.
 
-### 3.3 Physics Prior Regularization Losses
+### 3.3 Active Ocean Physics Loss Engine
 
-**Thermal Monotonicity Constraint** ($\mathcal{L}_{\mathrm{phy}, T}$):
-
-$$
-\mathcal{L}_{\mathrm{phy}, T} = \frac{1}{N} \sum_{i=1}^N \mathrm{ReLU}\left(\frac{\partial \hat{T}_i}{\partial z} + \epsilon\right)
-$$
-
-**TEOS-10 Stratification Stability (Anti-Density-Inversion)** ($\mathcal{L}_{\mathrm{phy}, \rho}$):
-
-Using the differentiable equation of state $\hat{\rho} = f_{\mathrm{TEOS\text{-}10}}(\hat{S}, \hat{T}, P)$:
+**1. Dynamic Height Anomaly (SLA) Coupling** ($\mathcal{L}_{\mathrm{sla}}$):
+Using TEOS-10 in-situ density integration to match radar altimetry SLA:
 
 $$
-\mathcal{L}_{\mathrm{phy}, \rho} = \frac{1}{N} \sum_{i=1}^N \mathrm{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)
+\Delta h_{\mathrm{steric}}(x, y) = -\frac{1}{\rho_0} \int_{0}^{H} \rho'(x, y, z) \, \mathrm{d}z, \quad \mathcal{L}_{\mathrm{sla}} = \mathrm{MSE}\left(\Delta h_{\mathrm{steric}}, \mathrm{SLA}_{\mathrm{obs}}\right)
 $$
 
-Both physical constraints are evaluated pointwise across space and depth using 4-D continuous coordinate tensors $z_{\mathrm{pts}} \in \mathbb{R}^{B \times S \times D \times 1}$ with PyTorch Autograd, ensuring that localized thermal or density inversions are directly penalized rather than canceled out by horizontal averaging.
+**2. Unified Sea Surface Dirichlet Boundary Anchor** ($\mathcal{L}_{\mathrm{surf}}$):
+Anchors $z = 0.5\,\mathrm{m}$ predictions to satellite SST and SSS in the unified 3D target normalization frame:
 
-**Adaptive Multi-Objective Balancing** ($\mathcal{L}_{\mathrm{total}}$):
+$$
+\mathcal{L}_{\mathrm{surf}} = \left\| \hat{T}_{\mathrm{norm}}(z_0) - \mathrm{SST}_{\mathrm{norm}} \right\|^2 + \left\| \hat{S}_{\mathrm{norm}}(z_0) - \mathrm{SSS}_{\mathrm{norm}} \right\|^2
+$$
+
+**3. Continuous Profile Derivative Supervision** ($\mathcal{L}_{\mathrm{grad}}$):
+First-order finite difference gradient matching per 100m water depth:
+
+$$
+\mathcal{L}_{\mathrm{grad}} = \left\| \frac{\partial \hat{T}}{\partial z_{100}} - \frac{\partial T_{\mathrm{gt}}}{\partial z_{100}} \right\|^2 + 2 \cdot \left\| \frac{\partial \hat{S}}{\partial z_{100}} - \frac{\partial S_{\mathrm{gt}}}{\partial z_{100}} \right\|^2
+$$
+
+**4. Mixed Layer Isothermal Regularization** ($\mathcal{L}_{\mathrm{mld}}$):
+Penalizes unphysical near-surface temperature curvature exceeding $0.02^\circ\mathrm{C}/\mathrm{m}$ in the upper 30m:
+
+$$
+\mathcal{L}_{\mathrm{mld}} = \frac{1}{N_{\mathrm{mld}}} \sum_{z_k \le 30\,\mathrm{m}} \operatorname{ReLU}\left( \left| \frac{\partial \hat{T}_{\mathrm{phys}}}{\partial z} \right| - 0.02^\circ\mathrm{C}/\mathrm{m} \right)
+$$
+
+**5. Smooth Stratification Stability (Anti-Density-Inversion)** ($\mathcal{L}_{\mathrm{stab}}$):
+Continuous softplus penalty enforcing non-negative vertical density gradients:
+
+$$
+\mathcal{L}_{\mathrm{stab}} = \frac{1}{N} \sum_{i=1}^N \operatorname{Softplus}\left(- 10 \cdot \frac{\partial \hat{\rho}_i}{\partial z}\right)
+$$
+
+**6. Adaptive Multi-Objective Balancing** ($\mathcal{L}_{\mathrm{total}}$):
 
 $$
 \mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(-\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2
 $$
 
-where $\omega_1, \omega_2$ are learnable homoscedastic log-variance / dual parameters dynamically adjusted during optimization (with $[-10, 10]$ gradient clipping for numerical stability).
+where $\omega_1, \omega_2$ are learnable homoscedastic log-variance dual parameters dynamically adjusted during optimization.
 
 ---
 
@@ -239,7 +266,8 @@ Pinn-Ocean/
 │   └── .gitkeep
 ├── data/                      # Local NetCDF observation and reanalysis data (tracked via .gitkeep)
 │   ├── .gitkeep
-│   └── 2020/                  # 2020 5-parameter annual dataset & pacific_reconstructed_3d.nc
+│   ├── 2020/                  # 2020 5-parameter annual benchmark dataset
+│   └── 2019_2020/             # 2019–2020 two-year full seasonal cycle dataset (24 months)
 ├── results/                   # High-resolution (300 DPI) figures and plots (tracked via .gitkeep)
 │   └── .gitkeep
 ├── download_data.py           # Automated data collection tool for Open Pacific CMEMS datasets
@@ -280,44 +308,52 @@ pip install -r requirements.txt
 
 ## 6. Quick Start & Pipeline Usage
 
-### 6.1 Data Collection (Open Pacific 2013–2021)
-Acquire satellite observations and GLORYS 3-D reanalysis for the Open Pacific basin ($145^\circ\text{E} - 165^\circ\text{E}, 30^\circ\text{N} - 40^\circ\text{N}$, zero land points):
+### 6.1 Data Collection (Open Pacific CMEMS)
+Acquire satellite observations and GLORYS 3-D reanalysis for the Open Pacific basin ($145^\circ\text{E} - 165^\circ\text{E}, 30^\circ\text{N} - 40^\circ\text{N}$, 0–1000m depth, zero land points):
 ```bash
-# Preview the subsetting parameters without connecting
+# Preview subsetting parameters without downloading
 python download_data.py --dry_run
 
-# Download core datasets (requires 'copernicusmarine login' first)
-python download_data.py --targets sla glorys_3d
+# Download 2019–2020 two-year (24-month) all 5 variables (SLA, GLORYS 3D, SST, SSS, Wind)
+python download_data.py --output_dir data/2019_2020 --start_time 2019-01-01 --end_time 2020-12-31 --targets all
 ```
 
-### 6.2 Pipeline Self-Test (No Data Needed)
-Run the self-contained verification script to validate forward inference, Autograd analytical differentiation, TEOS-10 seawater density computation, and backpropagation:
+### 6.2 Pipeline Self-Test (No External Data Needed)
+Run the self-contained verification suite validating DeepONet forward inference, Autograd analytical differentiation, TEOS-10 density computation, and multi-objective backward pass:
 ```bash
 python demo_test.py
 ```
 
 ### 6.3 Model Training
-To train on regional or basin-scale NetCDF datasets (e.g., CMEMS DUACS SLA and GLORYS12V1 reanalysis):
+Train on the 2019–2020 two-year dataset (or 2020 annual benchmark) with active physics constraints:
 ```bash
-python train.py --epochs 200 --batch_size 4 --lr 3e-4 --sampling_points 800
+# Train on 2019-2020 two-year dataset (24 months: 18 train, 3 val, 3 test)
+python train.py --data_dir data/2019_2020 --epochs 100 --batch_size 4 --lr 3e-4
+
+# Optional: Log training progress to file
+python train.py --data_dir data/2019_2020 --epochs 100 --batch_size 4 | Tee-Object -FilePath "train_2019_2020.log"
 ```
 
 ### 6.4 Model Evaluation
-Evaluate a trained model checkpoint on the test set:
+Evaluate a trained model checkpoint on the test set partition:
 ```bash
-python evaluate.py --checkpoint checkpoints/swin_ocean_pinn_best.pth
+python evaluate.py --data_dir data/2019_2020 --checkpoint checkpoints/swin_ocean_pinn_best.pth --mode test
 ```
 
 ### 6.5 Full 3-D Field Reconstruction & NetCDF Export
-Reconstruct continuous 3D potential temperature and salinity fields and export CF-compliant NetCDF4 assets for GIS tools:
+Reconstruct continuous 3-D potential temperature and salinity fields and export CF-1.8 compliant NetCDF4 assets for NASA Panoply, ArcGIS Pro, and QGIS:
 ```bash
-python predict.py --data_dir data/2020 --output_file data/2020/pacific_reconstructed_3d.nc
+# Reconstruct all 24 months continuous 4D volume
+python predict.py --data_dir data/2019_2020 --output_file data/2019_2020/pacific_reconstructed_3d.nc --mode all
+
+# Reconstruct independent test partition only
+python predict.py --data_dir data/2019_2020 --output_file data/2019_2020/pacific_reconstructed_3d_test.nc --mode test
 ```
 
 ### 6.6 Batch Scientific Visualization
-Generate publication-quality 300 DPI figures (profiles, T-S diagram, hexbin scatter density, and MLD scatter):
+Generate publication-quality 300 DPI figures (vertical profiles, T-S water mass consistency diagram, hexbin scatter density with $R^2$, and MLD scatter validation):
 ```bash
-python visualize.py --data_dir data/2020 --output_dir results
+python visualize.py --data_dir data/2019_2020 --mode test --output_dir results
 ```
 
 ---

@@ -156,15 +156,23 @@ flowchart TD
 
 </div>
 
-### 3.1 核心前向映射函数
+### 3.1 核心前向映射与神经算子融合架构
 
-网络将海表二维多动力参数与连续垂直深度坐标 $z$ 显式融合，建立高维连续重构映射：
+网络将三维大洋热盐场重构建模为神经算子求解问题，将二维海表多动力参数与连续垂直深度坐标 $z \in [0, 1000\,\mathrm{m}]$ 深度耦合：
 
 $$
-[\hat{T}, \hat{S}] = f_\theta(\text{SST}, \text{SLA}, \text{SSS}, \text{SSW}_U, \text{SSW}_V, \text{Lon}, \text{Lat}, \text{Month}, z)
+[\hat{T}, \hat{S}] = \mathcal{G}_\theta\left(\mathbf{X}_{\mathrm{surf}}, \boldsymbol{\gamma}(z)\right)
 $$
 
-其中 $z \in [0, 1000\text{ m}]$ 为显式自变量，赋予模型在垂直方向上任意连续深度的解析能力。
+其中 $\mathbf{X}_{\mathrm{surf}} \in \mathbb{R}^{B \times 8 \times H \times W}$ 编码了 8 通道海表动力要素，时序通道采用严密遵循北太平洋热力循环物理规律的周期余弦相位编码 $\tau_{\mathrm{season}} = -\cos\left(2\pi \frac{\text{month} - 2}{12}\right)$（2 月极冷为 -1，8 月极热为 +1，彻底杜绝冬半年温度外推畸变）；$\boldsymbol{\gamma}(z)$ 为 **`DepthFourierEmbedding`** 多尺度谐波傅里叶坐标嵌入模块（结合线性归一化水深、海洋对数水深及 8 个倍频程的正余弦展开），克服了传统 MLP 的坐标谱偏差。
+
+潜空间表征采用 **DeepONet 算子双支路融合**（Branch 网络提取表层动力特征，Trunk 网络编码垂向基函数）：
+
+$$
+\mathbf{F}_{\mathrm{fused}} = \operatorname{SiLU}\left(\mathbf{F}_{\mathrm{branch}} \odot \mathbf{F}_{\mathrm{trunk}} + \mathbf{F}_{\mathrm{branch}} + \mathbf{F}_{\mathrm{trunk}}\right)
+$$
+
+后端接入**解耦温盐双预测头**：独立温度预测头与更高容量的三层 MLP 盐度预测头，成功攻克了非单调“S”型盐跃层（次表层高盐核与中层低盐极小值）的精细重构。
 
 ### 3.2 空间移位窗口自注意力 (Swin Transformer)
 
@@ -176,31 +184,50 @@ $$
 
 其中 $B$ 为相对位置偏置矩阵，使得模型能够在大洋尺度下高效建模长距离空间遥相关。
 
-### 3.3 物理先验约束损失系统
+### 3.3 主动多目标海洋物理损失引擎
 
-**温度垂直单调递减约束**（$\mathcal{L}_{\mathrm{phy}, T}$）：
-
-$$
-\mathcal{L}_{\mathrm{phy}, T} = \frac{1}{N} \sum_{i=1}^N \mathrm{ReLU}\left(\frac{\partial \hat{T}_i}{\partial z} + \epsilon\right)
-$$
-
-**TEOS-10 层结稳定性与防密度倒置约束**（$\mathcal{L}_{\mathrm{phy}, \rho}$）：
-
-基于海水状态方程 $\hat{\rho} = f_{\mathrm{TEOS\text{-}10}}(\hat{S}, \hat{T}, P)$，惩罚违背静力平衡的密度倒置：
+**1. 动力高度异常（SLA）斜压位密积分约束**（$\mathcal{L}_{\mathrm{sla}}$）：
+利用 TEOS-10 海水状态方程解析求解各层现场密度，垂向静力积分对齐测高计 SLA 卫星场：
 
 $$
-\mathcal{L}_{\mathrm{phy}, \rho} = \frac{1}{N} \sum_{i=1}^N \mathrm{ReLU}\left(-\frac{\partial \hat{\rho}_i}{\partial z}\right)
+\Delta h_{\mathrm{steric}}(x, y) = -\frac{1}{\rho_0} \int_{0}^{H} \rho'(x, y, z) \, \mathrm{d}z, \quad \mathcal{L}_{\mathrm{sla}} = \mathrm{MSE}\left(\Delta h_{\mathrm{steric}}, \mathrm{SLA}_{\mathrm{obs}}\right)
 $$
 
-两项物理约束均基于 4 维连续坐标张量 $z_{\mathrm{pts}} \in \mathbb{R}^{B \times S \times D \times 1}$ 依托 PyTorch Autograd 在空间微元格点上逐点解析求导，确保局部逆温或密度倒置被严格单边惩罚，避免了因水平空间预先平均导致的物理悖论相互抵消漏洞。
+**2. 统一坐标系海表狄利克雷边界锚定**（$\mathcal{L}_{\mathrm{surf}}$）：
+将卫星 SST 与 SSS 观测投影至三维归一化坐标系统一施加边界约束，杜绝量纲尺度错位：
 
-**自适应多目标联合优化**（$\mathcal{L}_{\mathrm{total}}$）：
+$$
+\mathcal{L}_{\mathrm{surf}} = \left\| \hat{T}_{\mathrm{norm}}(z_0) - \mathrm{SST}_{\mathrm{norm}} \right\|^2 + \left\| \hat{S}_{\mathrm{norm}}(z_0) - \mathrm{SSS}_{\mathrm{norm}} \right\|^2
+$$
+
+**3. 连续剖面一阶差分梯度与曲率监督**（$\mathcal{L}_{\mathrm{grad}}$）：
+按每 100m 水深建立一阶有限差分梯度场均方误差约束（盐度跃层加注 2 倍权重）：
+
+$$
+\mathcal{L}_{\mathrm{grad}} = \left\| \frac{\partial \hat{T}}{\partial z_{100}} - \frac{\partial T_{\mathrm{gt}}}{\partial z_{100}} \right\|^2 + 2 \cdot \left\| \frac{\partial \hat{S}}{\partial z_{100}} - \frac{\partial S_{\mathrm{gt}}}{\partial z_{100}} \right\|^2
+$$
+
+**4. 0~30m 上混合层等温均质正则化**（$\mathcal{L}_{\mathrm{mld}}$）：
+惩罚上混合层微元内超过 $0.02^\circ\mathrm{C}/\mathrm{m}$ 的异常垂直温差，消除近表层数值翘尾效应：
+
+$$
+\mathcal{L}_{\mathrm{mld}} = \frac{1}{N_{\mathrm{mld}}} \sum_{z_k \le 30\,\mathrm{m}} \operatorname{ReLU}\left( \left| \frac{\partial \hat{T}_{\mathrm{phys}}}{\partial z} \right| - 0.02^\circ\mathrm{C}/\mathrm{m} \right)
+$$
+
+**5. TEOS-10 平滑层结稳定性与防密度倒置约束**（$\mathcal{L}_{\mathrm{stab}}$）：
+基于连续可微的 Softplus 算子对重力不稳定施加自适应平滑惩罚：
+
+$$
+\mathcal{L}_{\mathrm{stab}} = \frac{1}{N} \sum_{i=1}^N \operatorname{Softplus}\left(- 10 \cdot \frac{\partial \hat{\rho}_i}{\partial z}\right)
+$$
+
+**6. 自适应多目标联合优化**（$\mathcal{L}_{\mathrm{total}}$）：
 
 $$
 \mathcal{L}_{\mathrm{total}} = \exp(-\omega_1) \mathcal{L}_{\mathrm{data}} + \omega_1 + \exp(-\omega_2) \mathcal{L}_{\mathrm{phy}} + \omega_2
 $$
 
-其中 $\omega_1, \omega_2$ 为可学习的同方差对偶变量（内置 $[-10, 10]$ 数值稳定截断保护），在反向传播中自适应动态平衡数据保真度（MSE）与物理约束项的梯度贡献。
+其中 $\omega_1, \omega_2$ 为可学习的同方差对偶变量，动态自适应平衡数据保真度（MSE）与各项主动物理约束的梯度贡献。
 
 ---
 
@@ -242,7 +269,8 @@ Pinn-Ocean/
 │   └── .gitkeep
 ├── data/                      # 真实海洋卫星观测与 GLORYS 3D 再分析数据 (NetCDF) (通过 .gitkeep 追踪)
 │   ├── .gitkeep
-│   └── 2020/                  # 2020 年度 5 核心要素及 pacific_reconstructed_3d.nc
+│   ├── 2020/                  # 2020 单年 5 核心要素基准数据集
+│   └── 2019_2020/             # 2019–2020 两年全四季闭环数据集 (24 个月)
 ├── results/                   # 自动输出的 300 DPI 高清科研图件与报表 (通过 .gitkeep 追踪)
 │   └── .gitkeep
 ├── download_data.py           # CMEMS 开阔太平洋多源遥感与 3D 再分析数据自动化下载脚本
@@ -283,44 +311,52 @@ pip install -r requirements.txt
 
 ## 六、 快速上手与验证
 
-### 6.1 数据获取（开阔太平洋 2013–2021 年数据）
-本项目提供标准脚本直接从 CMEMS 抓取西北太平洋纯深海大洋无陆地区域（$145^\circ\text{E} - 165^\circ\text{E}, 30^\circ\text{N} - 40^\circ\text{N}$）的月度融合数据：
+### 6.1 数据获取（开阔太平洋 CMEMS 多源遥感与再分析）
+本项目提供标准脚本直接从 CMEMS 抓取西北太平洋纯深海大洋无陆地区域（$145^\circ\text{E} - 165^\circ\text{E}, 30^\circ\text{N} - 40^\circ\text{N}$，水深 $0.49 \sim 1000\,\mathrm{m}$）的月度融合数据：
 ```bash
 # 预览下载计划与网格参数（无需网络请求）
 python download_data.py --dry_run
 
-# 正式下载核心数据 (需预先运行 copernicusmarine login)
-python download_data.py --targets sla glorys_3d
+# 正式下载 2019–2020 两年（24 个月）全量 5 要素数据 (SLA, GLORYS 3D, SST, SSS, Wind)
+python download_data.py --output_dir data/2019_2020 --start_time 2019-01-01 --end_time 2020-12-31 --targets all
 ```
 
 ### 6.2 一键单元自检（无需外部数据）
-该测试通过仿真合成批次，对前向推理、Autograd 自动微分链、海水密度求导及反向梯度传播进行闭环校验：
+该测试通过仿真合成批次，对 DeepONet 前向推理、Autograd 自动微分链、TEOS-10 海水密度求导及多目标物理损失反传进行闭环校验：
 ```bash
 python demo_test.py
 ```
 
-### 6.3 启动模型训练
-在本地或云端算力节点针对区域或大洋尺度的 NetCDF 数据启动物理训练：
+### 6.3 启动模型物理训练
+在 2019–2020 两年数据集（或 2020 单年数据）上启动耦合主动物理约束的正式训练：
 ```bash
-python train.py --epochs 200 --batch_size 4 --lr 3e-4 --sampling_points 800
+# 启动 2019-2020 两年数据物理训练 (24 个月: 18 个月训练, 3 个月验证, 3 个月测试)
+python train.py --data_dir data/2019_2020 --epochs 100 --batch_size 4 --lr 3e-4
+
+# 可选：带日志留存启动
+python train.py --data_dir data/2019_2020 --epochs 100 --batch_size 4 | Tee-Object -FilePath "train_2019_2020.log"
 ```
 
 ### 6.4 模型性能评估与指标检验
-加载最优检查点并在测试集上计算全深度温盐指标（RMSE, MAE, R²）：
+加载最优检查点并在测试集上计算全深度温盐物理指标（RMSE, MAE, R² 与 MLD 误差）：
 ```bash
-python evaluate.py --checkpoint checkpoints/swin_ocean_pinn_best.pth
+python evaluate.py --data_dir data/2019_2020 --checkpoint checkpoints/swin_ocean_pinn_best.pth --mode test
 ```
 
-### 6.5 全域三维立体反演与数据资产导出
-将训练成果用于全空间三维反演并导出为 CF 标准的 NetCDF4 成果文件（便于导入 GIS 软件）：
+### 6.5 全域三维立体反演与 NetCDF4 数据资产导出
+将训练成果用于全时空三维立体连续反演，并导出为 CF-1.8 标准 NetCDF4 成果文件（可直接导入 NASA Panoply、ArcGIS Pro 或 QGIS）：
 ```bash
-python predict.py --data_dir data/2020 --output_file data/2020/pacific_reconstructed_3d.nc
+# 导出 2019-2020 全量 24 个月连续 4 维体网格场
+python predict.py --data_dir data/2019_2020 --output_file data/2019_2020/pacific_reconstructed_3d.nc --mode all
+
+# 仅导出独立测试集时段
+python predict.py --data_dir data/2019_2020 --output_file data/2019_2020/pacific_reconstructed_3d_test.nc --mode test
 ```
 
 ### 6.6 顶刊级科研图件一键批量生成
-自动生成 4 组符合学术论文与中期汇报规范的 300 DPI 高清评估图件：
+自动生成 4 组符合学术论文与汇报规范的 300 DPI 高清科研评估图件（垂直剖面对比、T-S 温盐图、Hexbin 散点密度与 MLD 验证）：
 ```bash
-python visualize.py --data_dir data/2020 --output_dir results
+python visualize.py --data_dir data/2019_2020 --mode test --output_dir results
 ```
 
 ---
