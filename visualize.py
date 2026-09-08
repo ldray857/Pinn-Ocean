@@ -107,7 +107,6 @@ def run_visualization():
     model.eval()
 
     z_raw = dataset.get_depth_tensor().to(device)
-    z_norm = (z_raw - z_raw.mean()) / (z_raw.std() + 1e-6)
 
     # Accumulate evaluation samples across partition
     all_true_t, all_pred_t = [], []
@@ -123,7 +122,7 @@ def run_visualization():
     with torch.no_grad():
         for i, (x_8ch, y_3d) in enumerate(loader):
             x_8ch = x_8ch.to(device)
-            preds = model(x_8ch, z_norm, sample_idx=None)  # (1, 2, D, H, W)
+            preds = model(x_8ch, z_raw, sample_idx=None)  # (1, 2, D, H, W)
 
             # Un-normalize to physical units (°C and PSU)
             pred_t = preds[0, 0].cpu().numpy() * stats['std_t'] + stats['mean_t']

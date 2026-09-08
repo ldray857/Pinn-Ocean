@@ -184,10 +184,13 @@ class OceanContinuousDataset(Dataset):
         self.sal_norm = (sal_all[current_idx] - self.stats['mean_s']) / self.stats['std_s']
 
         # 7. Normalized Cyclic Month Encoding
-        self.months_norm = np.array([
-            float(t.astype('datetime64[M]').astype(int) % 12 + 1) / 12.0
+        # Uses oceanographic thermal cycle phase: Coldest in Feb (month 2), warmest in Aug (month 8)
+        # Bounded in [-1.0, 1.0], completely eliminating out-of-distribution winter extrapolation
+        month_vals = np.array([
+            float(t.astype('datetime64[M]').astype(int) % 12 + 1)
             for t in self.times
         ])
+        self.months_norm = - np.cos(2.0 * np.pi * (month_vals - 2.0) / 12.0)
 
     def __len__(self):
         return len(self.times)

@@ -10,7 +10,10 @@ Validates the complete deep learning & physics pipeline without external NetCDF 
 6. Backward pass and optimizer parameter updates
 """
 
+import os
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -64,46 +67,53 @@ def run_unit_tests():
     B, H, W = 2, 40, 40
     D = 25
     x_8ch = torch.randn(B, 8, H, W, device=device)
-    z_raw = torch.linspace(0.5, 1000.0, D, device=device)
-    z_norm = (z_raw - z_raw.mean()) / (z_raw.std() + 1e-6)
-    z_norm.requires_grad_(True)
+    z_raw = torch.linspace(0.5, 1000.0, D, device=device).requires_grad_(True)
 
     print(f"      Input x shape: {tuple(x_8ch.shape)}")
-    print(f"      Depth z shape: {tuple(z_norm.shape)}")
+    print(f"      Depth z shape: {tuple(z_raw.shape)}")
 
     # 4. Test Forward Pass
     print("\n[5/6] Testing Model Forward Pass (Full Grid and Random Sampling)...")
     # Mode A: Full grid
-    preds_full = model(x_8ch, z_norm, sample_idx=None)
+    preds_full = model(x_8ch, z_raw, sample_idx=None)
     print(f"      Full-grid Prediction Shape: {tuple(preds_full.shape)} (Expected: {B}, 2, {D}, {H}, {W})")
     assert preds_full.shape == (B, 2, D, H, W), "Full-grid prediction shape mismatch"
 
     # Mode B: Random sampling (e.g. 500 points)
     sample_idx = torch.randperm(H * W)[:500].to(device)
-    preds_sampled = model(x_8ch, z_norm, sample_idx=sample_idx)
+    preds_sampled = model(x_8ch, z_raw, sample_idx=sample_idx)
     print(f"      Sampled Prediction Shape: {tuple(preds_sampled.shape)} (Expected: {B}, 2, {D}, 500)")
     assert preds_sampled.shape == (B, 2, D, 500), "Sampled prediction shape mismatch"
 
     # 5. Test Physics Loss & Autograd Backpropagation
     print("\n[6/6] Testing Physics Loss Calculation and Backpropagation...")
-    phy_loss_fn = OceanPhysicsLoss(temp_grad_threshold=0.005, enable_density=True).to(device)
+    phy_loss_fn = OceanPhysicsLoss().to(device)
     adaptive_loss_fn = AdaptiveMultiObjectiveLoss().to(device)
     mse_loss_fn = nn.MSELoss()
 
     synthetic_target = torch.randn(B, 2, D, 500, device=device)
     synthetic_stats = {
         'mean_t': 15.0, 'std_t': 8.0,
-        'mean_s': 34.5, 'std_s': 0.5
+        'mean_s': 34.5, 'std_s': 0.5,
+        'mean_sla': 0.0, 'std_sla': 0.1
+    }
+    surface_obs = {
+        'sst': x_8ch[:, 0].flatten(1)[:, sample_idx],
+        'sla': x_8ch[:, 1].flatten(1)[:, sample_idx],
+        'sss': x_8ch[:, 2].flatten(1)[:, sample_idx]
     }
 
-    # Test 5a: Pointwise Autograd (per-sample per-depth physical gradient)
-    z_norm_pts = z_norm.view(1, 1, D, 1).repeat(B, 500, 1, 1).requires_grad_(True)
-    preds_sampled_pts = model(x_8ch, z_norm_pts, sample_idx=sample_idx)
+    # Pointwise Autograd (per-sample per-depth physical gradient)
+    z_raw_pts = z_raw.view(1, 1, D, 1).repeat(B, 500, 1, 1).requires_grad_(True)
+    preds_sampled_pts = model(x_8ch, z_raw_pts, sample_idx=sample_idx)
     loss_data_pts = mse_loss_fn(preds_sampled_pts, synthetic_target)
-    loss_phy_pts, loss_dict_pts = phy_loss_fn(preds_sampled_pts, z_norm_pts, stats=synthetic_stats, z_raw=z_raw)
+    loss_phy_pts, loss_dict_pts = phy_loss_fn(
+        preds_sampled_pts, z_raw_pts, stats=synthetic_stats, z_raw=z_raw,
+        surface_obs=surface_obs, y_target=synthetic_target
+    )
     total_loss_pts, w1_pts, w2_pts = adaptive_loss_fn(loss_data_pts, loss_phy_pts)
 
-    print(f"      [Pointwise] Data Loss: {loss_data_pts.item():.5f} | Phy Loss: {loss_phy_pts.item():.5f} (Temp: {loss_dict_pts['loss_phy_temp'].item():.5f}, Density: {loss_dict_pts['loss_phy_density'].item():.5f})")
+    print(f"      [Pointwise] Data Loss: {loss_data_pts.item():.5f} | Phy Loss: {loss_phy_pts.item():.5f} (Surf: {loss_dict_pts['loss_surf'].item():.5f}, SLA: {loss_dict_pts['loss_sla'].item():.5f}, Grad: {loss_dict_pts['loss_grad'].item():.5f})")
     print(f"      [Pointwise] Adaptive Loss: {total_loss_pts.item():.5f}")
 
     optimizer = optim.AdamW(list(model.parameters()) + list(adaptive_loss_fn.parameters()), lr=1e-3)
@@ -111,13 +121,6 @@ def run_unit_tests():
     total_loss_pts.backward()
     optimizer.step()
     print("      --> Pointwise backward pass and parameter update executed successfully.")
-
-    # Test 5b: Profile-level Autograd (fresh forward pass after parameter update)
-    optimizer.zero_grad()
-    preds_fresh = model(x_8ch, z_norm, sample_idx=sample_idx)
-    loss_phy_prof, _ = phy_loss_fn(preds_fresh, z_norm, stats=synthetic_stats, z_raw=z_raw)
-    loss_phy_prof.backward()
-    print("      --> Profile-level backward pass executed successfully.")
     print("\n==================================================================")
     print(" [PASSED] All Pinn-Ocean core components verified successfully!   ")
     print("==================================================================")

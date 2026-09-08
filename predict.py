@@ -104,7 +104,6 @@ def predict_and_export():
 
     # 3. Continuous Depth Coordinate Tensor
     z_raw = dataset.get_depth_tensor().to(device)
-    z_norm = (z_raw - z_raw.mean()) / (z_raw.std() + 1e-6)
 
     all_pred_thetao = []
     all_pred_so = []
@@ -116,7 +115,7 @@ def predict_and_export():
         for step, (x_8ch, y_3d) in enumerate(data_loader, 1):
             x_8ch = x_8ch.to(device)
             # Full grid volumetric reconstruction: (1, 2, D, H, W)
-            preds = model(x_8ch, z_norm, sample_idx=None)
+            preds = model(x_8ch, z_raw, sample_idx=None)
 
             # Un-normalize to physical dimensions: °C and PSU
             pred_t = preds[0, 0].cpu().numpy() * stats['std_t'] + stats['mean_t']

@@ -116,36 +116,47 @@ def main():
     for epoch in range(1, args.epochs + 1):
         model.train()
         train_data_loss_sum = 0.0
+        train_t_loss_sum = 0.0
+        train_s_loss_sum = 0.0
         train_phy_loss_sum = 0.0
 
         for x_8ch, y_3d in train_loader:
             x_8ch, y_3d = x_8ch.to(device), y_3d.to(device)
 
-            # Prepare continuous vertical depth coordinate with gradient tracking
+            # Continuous vertical depth coordinate in meters
             z_raw = train_dataset.get_depth_tensor().to(device)
-            z_norm = (z_raw - z_raw.mean()) / (z_raw.std() + 1e-6)
-            
-            # Pointwise z coordinate tensor for exact spatial-depth Autograd derivatives
             B_curr = x_8ch.shape[0]
             D_curr = z_raw.shape[0]
-            z_norm_pts = z_norm.view(1, 1, D_curr, 1).repeat(B_curr, args.sampling_points, 1, 1).requires_grad_(True)
 
             # Random spatial sampling to maintain efficient VRAM footprint
             total_points = y_3d.shape[3] * y_3d.shape[4]
             sample_idx = torch.randperm(total_points)[:args.sampling_points].to(device)
 
+            # Pointwise z coordinate tensor for exact spatial-depth Autograd derivatives
+            z_pts = z_raw.view(1, 1, D_curr, 1).repeat(B_curr, args.sampling_points, 1, 1).requires_grad_(True)
+
             optimizer.zero_grad()
 
             # Forward pass on sampled points
-            preds = model(x_8ch, z_norm_pts, sample_idx=sample_idx)
+            preds = model(x_8ch, z_pts, sample_idx=sample_idx)
             y_target = y_3d.view(B_curr, 2, D_curr, -1)[:, :, :, sample_idx]
 
-            # 1. Data-driven fidelity loss
-            loss_data = mse_loss_fn(preds, y_target)
+            # 1. Decoupled data-driven fidelity loss
+            loss_t = mse_loss_fn(preds[:, 0], y_target[:, 0])
+            loss_s = mse_loss_fn(preds[:, 1], y_target[:, 1])
+            loss_data = loss_t + 2.0 * loss_s
 
-            # 2. Physics-informed constraint loss (pointwise thermal & stratification stability)
+            # Extract corresponding sampled surface observations for physics constraints
+            surface_obs = {
+                'sst': x_8ch[:, 0].flatten(1)[:, sample_idx],
+                'sla': x_8ch[:, 1].flatten(1)[:, sample_idx],
+                'sss': x_8ch[:, 2].flatten(1)[:, sample_idx]
+            }
+
+            # 2. Multi-objective active physics loss
             loss_phy, loss_dict = phy_loss_fn(
-                preds, z_norm_pts, stats=train_dataset.stats, z_raw=z_raw
+                preds, z_pts, stats=train_dataset.stats, z_raw=z_raw,
+                surface_obs=surface_obs, y_target=y_target
             )
 
             # 3. Joint adaptive multi-objective loss
@@ -156,33 +167,46 @@ def main():
             optimizer.step()
 
             train_data_loss_sum += loss_data.item()
+            train_t_loss_sum += loss_t.item()
+            train_s_loss_sum += loss_s.item()
             train_phy_loss_sum += loss_phy.item()
 
         # Validation step
         model.eval()
         val_mse_sum = 0.0
+        val_t_sum = 0.0
+        val_s_sum = 0.0
         with torch.no_grad():
             for x_8ch, y_3d in val_loader:
                 x_8ch, y_3d = x_8ch.to(device), y_3d.to(device)
                 z_raw = val_dataset.get_depth_tensor().to(device)
-                z_norm = (z_raw - z_raw.mean()) / (z_raw.std() + 1e-6)
 
-                preds = model(x_8ch, z_norm, sample_idx=None)
-                val_mse_sum += mse_loss_fn(preds, y_3d).item()
+                preds = model(x_8ch, z_raw, sample_idx=None)
+                val_t = mse_loss_fn(preds[:, 0], y_3d[:, 0]).item()
+                val_s = mse_loss_fn(preds[:, 1], y_3d[:, 1]).item()
+                val_t_sum += val_t
+                val_s_sum += val_s
+                val_mse_sum += (val_t + val_s) / 2.0
 
-        avg_train_mse = train_data_loss_sum / max(1, len(train_loader))
-        avg_train_phy = train_phy_loss_sum / max(1, len(train_loader))
-        avg_val_mse = val_mse_sum / max(1, len(val_loader))
+        n_batches = max(1, len(train_loader))
+        n_val_batches = max(1, len(val_loader))
+        avg_train_mse = train_data_loss_sum / n_batches
+        avg_train_t = train_t_loss_sum / n_batches
+        avg_train_s = train_s_loss_sum / n_batches
+        avg_train_phy = train_phy_loss_sum / n_batches
+        avg_val_mse = val_mse_sum / n_val_batches
+        avg_val_t = val_t_sum / n_val_batches
+        avg_val_s = val_s_sum / n_val_batches
 
         scheduler.step(avg_val_mse)
 
         if epoch % 5 == 0 or epoch == 1:
             print(
                 f"Epoch [{epoch:03d}/{args.epochs}] | "
-                f"Train MSE: {avg_train_mse:.5f} | "
-                f"Phy Loss: {avg_train_phy:.5f} | "
-                f"Val MSE: {avg_val_mse:.5f} | "
-                f"Dual Weights (w1/w2): {w1:.2f}/{w2:.2f}"
+                f"Train MSE (T/S): {avg_train_t:.4f}/{avg_train_s:.4f} | "
+                f"Phy Loss: {avg_train_phy:.4f} (Surf:{loss_dict['loss_surf']:.3f}, MLD:{loss_dict['loss_mld']:.3f}, SLA:{loss_dict['loss_sla']:.3f}, Grad:{loss_dict['loss_grad']:.3f}) | "
+                f"Val MSE (T/S): {avg_val_t:.4f}/{avg_val_s:.4f} | "
+                f"Weights (w1/w2): {w1:.2f}/{w2:.2f}"
             )
 
             if avg_val_mse < best_val_loss:

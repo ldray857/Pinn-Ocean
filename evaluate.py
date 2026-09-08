@@ -76,12 +76,11 @@ def evaluate():
     all_targets_s = []
 
     z_raw = test_dataset.get_depth_tensor().to(device)
-    z_norm = (z_raw - z_raw.mean()) / (z_raw.std() + 1e-6)
 
     with torch.no_grad():
         for x_8ch, y_3d in test_loader:
             x_8ch, y_3d = x_8ch.to(device), y_3d.to(device)
-            preds = model(x_8ch, z_norm, sample_idx=None)  # (1, 2, D, H, W)
+            preds = model(x_8ch, z_raw, sample_idx=None)  # (1, 2, D, H, W)
 
             # Un-normalize to physical units
             pred_t = preds[0, 0].cpu().numpy() * stats['std_t'] + stats['mean_t']
