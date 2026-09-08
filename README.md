@@ -287,29 +287,31 @@ Pinn-Ocean/
 
 ## 5. Installation & Environment
 
-### Step 1: Clone Repository
+### (a) Clone Repository
 ```bash
 git clone https://github.com/ldray857/Pinn-Ocean.git
 cd Pinn-Ocean
 ```
 
-### Step 2: Set Up Conda Environment
+### (b) Create and Activate Conda Environment
 ```bash
 conda create -n pinn_ocean python=3.10 -y
 conda activate pinn_ocean
 ```
 
-### Step 3: Install Dependencies
+### (c) Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
 ---
 
-## 6. Quick Start & Pipeline Usage
+## 6. Pipeline Experiments & Verification (Two-Year Dataset as Example)
 
-### 6.1 Data Collection (Open Pacific CMEMS)
-Acquire satellite observations and GLORYS 3-D reanalysis for the Open Pacific basin ($145^\circ\text{E} - 165^\circ\text{E}, 30^\circ\text{N} - 40^\circ\text{N}$, 0–1000m depth, zero land points):
+### 6.1 Data Acquisition
+
+The project provides standard automated scripts to subset and download multi-source satellite observations and 3-D reanalysis for the Northwest Pacific open ocean ($145^\circ\text{E} - 165^\circ\text{E}, 30^\circ\text{N} - 40^\circ\text{N}$, depth $0.49 \sim 1000\,\mathrm{m}$):
+
 ```bash
 # Preview subsetting parameters without downloading
 python download_data.py --dry_run
@@ -318,14 +320,14 @@ python download_data.py --dry_run
 python download_data.py --output_dir data/2019_2020 --start_time 2019-01-01 --end_time 2020-12-31 --targets all
 ```
 
-### 6.2 Pipeline Self-Test (No External Data Needed)
-Run the self-contained verification suite validating DeepONet forward inference, Autograd analytical differentiation, TEOS-10 density computation, and multi-objective backward pass:
+### 6.2 Code Self-Inspection
+This self-contained verification suite uses synthetic mini-batches to validate DeepONet forward inference, Autograd analytical differentiation, TEOS-10 density computation, and multi-objective backward pass:
 ```bash
 python demo_test.py
 ```
 
 ### 6.3 Model Training
-Train on the 2019–2020 two-year dataset (or 2020 annual benchmark) with active physics constraints:
+Train on the 2019–2020 two-year dataset with active physics constraints:
 ```bash
 # Train on 2019-2020 two-year dataset (24 months: 18 train, 3 val, 3 test)
 python train.py --data_dir data/2019_2020 --epochs 100 --batch_size 4 --lr 3e-4
@@ -340,7 +342,7 @@ Evaluate a trained model checkpoint on the test set partition:
 python evaluate.py --data_dir data/2019_2020 --checkpoint checkpoints/swin_ocean_pinn_best.pth --mode test
 ```
 
-### 6.5 Full 3-D Field Reconstruction & NetCDF Export
+### 6.5 Full 3-D Field Reconstruction & NetCDF4 Export
 Reconstruct continuous 3-D potential temperature and salinity fields and export CF-1.8 compliant NetCDF4 assets for NASA Panoply, ArcGIS Pro, and QGIS:
 ```bash
 # Reconstruct all 24 months continuous 4D volume
@@ -350,7 +352,7 @@ python predict.py --data_dir data/2019_2020 --output_file data/2019_2020/pacific
 python predict.py --data_dir data/2019_2020 --output_file data/2019_2020/pacific_reconstructed_3d_test.nc --mode test
 ```
 
-### 6.6 Batch Scientific Visualization
+### 6.6 Visualization Plotting
 Generate publication-quality 300 DPI figures (vertical profiles, T-S water mass consistency diagram, hexbin scatter density with $R^2$, and MLD scatter validation):
 ```bash
 python visualize.py --data_dir data/2019_2020 --mode test --output_dir results

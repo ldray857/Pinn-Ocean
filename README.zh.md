@@ -290,29 +290,31 @@ Pinn-Ocean/
 
 ## 五、 环境准备与安装
 
-### 步骤 1：克隆仓库
+### (a) 克隆仓库
 ```bash
 git clone https://github.com/ldray857/Pinn-Ocean.git
 cd Pinn-Ocean
 ```
 
-### 步骤 2：创建并激活 Conda 虚拟环境
+### (b) 创建并激活 Conda 虚拟环境
 ```bash
 conda create -n pinn_ocean python=3.10 -y
 conda activate pinn_ocean
 ```
 
-### 步骤 3：安装依赖库
+### (c) 安装依赖库
 ```bash
 pip install -r requirements.txt
 ```
 
 ---
 
-## 六、 快速上手与验证
+## 六、 简单实验与验证（以两年的数据为例）
 
-### 6.1 数据获取（开阔太平洋 CMEMS 多源遥感与再分析）
+### 6.1 数据获取
+
 本项目提供标准脚本直接从 CMEMS 抓取西北太平洋纯深海大洋无陆地区域（$145^\circ\text{E} - 165^\circ\text{E}, 30^\circ\text{N} - 40^\circ\text{N}$，水深 $0.49 \sim 1000\,\mathrm{m}$）的月度融合数据：
+
 ```bash
 # 预览下载计划与网格参数（无需网络请求）
 python download_data.py --dry_run
@@ -321,14 +323,14 @@ python download_data.py --dry_run
 python download_data.py --output_dir data/2019_2020 --start_time 2019-01-01 --end_time 2020-12-31 --targets all
 ```
 
-### 6.2 一键单元自检（无需外部数据）
+### 6.2 代码自检
 该测试通过仿真合成批次，对 DeepONet 前向推理、Autograd 自动微分链、TEOS-10 海水密度求导及多目标物理损失反传进行闭环校验：
 ```bash
 python demo_test.py
 ```
 
-### 6.3 启动模型物理训练
-在 2019–2020 两年数据集（或 2020 单年数据）上启动耦合主动物理约束的正式训练：
+### 6.3 启动模型进行训练
+在 2019–2020 两年数据集上启动耦合主动物理约束的正式训练：
 ```bash
 # 启动 2019-2020 两年数据物理训练 (24 个月: 18 个月训练, 3 个月验证, 3 个月测试)
 python train.py --data_dir data/2019_2020 --epochs 100 --batch_size 4 --lr 3e-4
@@ -343,7 +345,7 @@ python train.py --data_dir data/2019_2020 --epochs 100 --batch_size 4 | Tee-Obje
 python evaluate.py --data_dir data/2019_2020 --checkpoint checkpoints/swin_ocean_pinn_best.pth --mode test
 ```
 
-### 6.5 全域三维立体反演与 NetCDF4 数据资产导出
+### 6.5 全域三维立体反演与 NetCDF4 数据导出
 将训练成果用于全时空三维立体连续反演，并导出为 CF-1.8 标准 NetCDF4 成果文件（可直接导入 NASA Panoply、ArcGIS Pro 或 QGIS）：
 ```bash
 # 导出 2019-2020 全量 24 个月连续 4 维体网格场
@@ -353,7 +355,7 @@ python predict.py --data_dir data/2019_2020 --output_file data/2019_2020/pacific
 python predict.py --data_dir data/2019_2020 --output_file data/2019_2020/pacific_reconstructed_3d_test.nc --mode test
 ```
 
-### 6.6 顶刊级科研图件一键批量生成
+### 6.6 可视化绘图
 自动生成 4 组符合学术论文与汇报规范的 300 DPI 高清科研评估图件（垂直剖面对比、T-S 温盐图、Hexbin 散点密度与 MLD 验证）：
 ```bash
 python visualize.py --data_dir data/2019_2020 --mode test --output_dir results
