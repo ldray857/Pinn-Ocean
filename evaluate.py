@@ -14,6 +14,7 @@ from configs.default_config import ModelConfig, DataConfig
 from pinn_ocean.models.swin_ocean_pinn import SwinOceanPINN
 from pinn_ocean.datasets.ocean_dataset import OceanContinuousDataset
 from pinn_ocean.utils.metrics import calc_rmse, calc_mae, calc_r2, calc_mld
+from pinn_ocean.utils import get_result_dirs
 
 
 def parse_args():
@@ -27,6 +28,10 @@ def parse_args():
                         help="Dataset partition to evaluate ('train', 'val', 'test', or 'all')")
     parser.add_argument("--years", nargs="+", type=int, default=None,
                         help="Optional specific years to include (e.g. --years 2017 2018 2019 2020)")
+    parser.add_argument("--result_dir", type=str, default="result",
+                        help="Root result directory (default: result)")
+    parser.add_argument("--tag", type=str, default=None,
+                        help="Experiment/year tag name (default: auto-detected, e.g. 2015_2020)")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
 
@@ -34,14 +39,6 @@ def parse_args():
 def evaluate():
     args = parse_args()
     device = torch.device(args.device)
-
-    print("==================================================================")
-    print("                Swin-Ocean-PINN Model Evaluation                  ")
-    print(f" Device: {device} | Checkpoint: {args.checkpoint} | Partition: {args.mode.upper()}")
-    print(f" Data Directory: {os.path.abspath(args.data_dir)}")
-    if args.years:
-        print(f" Filter Years  : {args.years}")
-    print("==================================================================")
 
     sla_path = os.path.join(args.data_dir, "pacific_sla_2013_2021.nc")
     gt_path = os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal_2013_2021.nc")
@@ -54,6 +51,30 @@ def evaluate():
         print(f"[Warning] Could not load test dataset ({e}).")
         return
 
+    # Setup standardized result directory structure
+    res_dirs = get_result_dirs(
+        result_dir=args.result_dir,
+        tag=args.tag,
+        dataset=test_dataset,
+        data_dir=args.data_dir,
+        years=args.years
+    )
+
+    # Checkpoint resolution: prioritize result/<year_tag>/checkpoints/ if default was provided
+    ckpt_path = args.checkpoint
+    tag_ckpt = os.path.join(res_dirs['ckpt_dir'], "swin_ocean_pinn_best.pth")
+    if args.checkpoint == "checkpoints/swin_ocean_pinn_best.pth" and os.path.exists(tag_ckpt):
+        ckpt_path = tag_ckpt
+
+    print("==================================================================")
+    print("                Swin-Ocean-PINN Model Evaluation                  ")
+    print(f" Device: {device} | Checkpoint: {ckpt_path} | Partition: {args.mode.upper()}")
+    print(f" Data Directory: {os.path.abspath(args.data_dir)}")
+    print(f" Result Tag    : {res_dirs['tag']} ({res_dirs['exp_dir']})")
+    if args.years:
+        print(f" Filter Years  : {args.years}")
+    print("==================================================================")
+
     # Load Model
     model_cfg = ModelConfig()
     model = SwinOceanPINN(
@@ -64,13 +85,13 @@ def evaluate():
         out_dim=model_cfg.out_dim
     ).to(device)
 
-    if os.path.exists(args.checkpoint):
-        checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    if os.path.exists(ckpt_path):
+        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         stats = checkpoint.get('stats', test_dataset.stats)
-        print(f"Loaded weights from {args.checkpoint} (Epoch: {checkpoint.get('epoch', 'N/A')})")
+        print(f"Loaded weights from {ckpt_path} (Epoch: {checkpoint.get('epoch', 'N/A')})")
     else:
-        print(f"[Notice] Checkpoint {args.checkpoint} not found. Running with initial weights.")
+        print(f"[Notice] Checkpoint {ckpt_path} not found. Running with initial weights.")
         stats = test_dataset.stats
 
     model.eval()
@@ -104,14 +125,30 @@ def evaluate():
 
     # Compute overall metrics
     rmse_t = calc_rmse(all_preds_t, all_targets_t)
+    mae_t = calc_mae(all_preds_t, all_targets_t)
     r2_t = calc_r2(all_preds_t, all_targets_t)
+
     rmse_s = calc_rmse(all_preds_s, all_targets_s)
+    mae_s = calc_mae(all_preds_s, all_targets_s)
     r2_s = calc_r2(all_preds_s, all_targets_s)
 
-    print("\n---------------------- Evaluation Results ----------------------")
-    print(f" Temperature:  RMSE = {rmse_t:.4f} °C | R^2 = {r2_t:.4f}")
-    print(f" Salinity:     RMSE = {rmse_s:.4f} PSU | R^2 = {r2_s:.4f}")
-    print("----------------------------------------------------------------")
+    summary_lines = [
+        "---------------------- Evaluation Results ----------------------",
+        f" Checkpoint:   {ckpt_path}",
+        f" Partition:    {args.mode.upper()} ({len(test_dataset)} samples)",
+        f" Result Tag:   {res_dirs['tag']}",
+        f" Temperature:  RMSE = {rmse_t:.4f} °C | MAE = {mae_t:.4f} °C | R^2 = {r2_t:.4f}",
+        f" Salinity:     RMSE = {rmse_s:.4f} PSU | MAE = {mae_s:.4f} PSU | R^2 = {r2_s:.4f}",
+        "----------------------------------------------------------------"
+    ]
+
+    for line in summary_lines:
+        print(line)
+
+    eval_log_path = os.path.join(res_dirs['log_dir'], "eval.log")
+    with open(eval_log_path, "a", encoding="utf-8") as f_eval:
+        f_eval.write("\n".join(summary_lines) + "\n\n")
+    print(f"Results saved to log: {eval_log_path}")
 
 
 if __name__ == "__main__":

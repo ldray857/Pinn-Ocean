@@ -17,6 +17,7 @@ from pinn_ocean.losses.physics_loss import OceanPhysicsLoss
 from pinn_ocean.losses.adaptive_loss import AdaptiveMultiObjectiveLoss
 from pinn_ocean.datasets.ocean_dataset import OceanContinuousDataset
 from pinn_ocean.utils.metrics import calc_rmse, calc_r2
+from pinn_ocean.utils import get_result_dirs
 
 
 def parse_args():
@@ -35,6 +36,10 @@ def parse_args():
     parser.add_argument("--sampling_points", type=int, default=800, help="Number of spatial sampling points")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--output_dir", type=str, default="checkpoints", help="Output directory for checkpoints")
+    parser.add_argument("--result_dir", type=str, default="result",
+                        help="Root result directory (default: result)")
+    parser.add_argument("--tag", type=str, default=None,
+                        help="Experiment/year tag name (default: auto-detected, e.g. 2015_2020)")
     parser.add_argument("--years", nargs="+", type=int, default=None,
                         help="Optional specific years to include (e.g. --years 2017 2018 2019 2020)")
     return parser.parse_args()
@@ -81,6 +86,28 @@ def main():
         print(f"[Warning] Real dataset could not be loaded ({e}).")
         print("Please check NetCDF file paths or run demo_test.py for synthetic verification.")
         return
+
+    # Setup standardized result directory structure: result/<year_tag>/{pic, log, con, checkpoints}
+    res_dirs = get_result_dirs(
+        result_dir=args.result_dir,
+        tag=args.tag,
+        dataset=train_dataset,
+        data_dir=args.data_dir,
+        years=args.years
+    )
+    print(f"\n[Result Structure] Tag: {res_dirs['tag']}")
+    print(f"  ├── Base:  {os.path.abspath(res_dirs['exp_dir'])}")
+    print(f"  ├── pic/:  {res_dirs['pic_dir']}")
+    print(f"  ├── log/:  {res_dirs['log_dir']}")
+    print(f"  ├── con/:  {res_dirs['con_dir']}")
+    print(f"  └── ckpt/: {res_dirs['ckpt_dir']}")
+
+    log_file_path = os.path.join(res_dirs['log_dir'], "train.log")
+    with open(log_file_path, "w", encoding="utf-8") as f_log:
+        f_log.write(f"Swin-Ocean-PINN Training Log - Tag: {res_dirs['tag']}\n")
+        f_log.write(f"Device: {device} | Epochs: {args.epochs} | Batch: {args.batch_size} | LR: {args.lr}\n")
+        f_log.write(f"Train samples: {len(train_dataset)} | Val samples: {len(val_dataset)}\n")
+        f_log.write("=" * 70 + "\n")
 
     # 2. Model, Losses, and Optimizers
     model_cfg = ModelConfig()
@@ -205,28 +232,40 @@ def main():
         scheduler.step(avg_val_mse)
 
         if epoch % 5 == 0 or epoch == 1:
-            print(
+            log_line = (
                 f"Epoch [{epoch:03d}/{args.epochs}] | "
                 f"Train MSE (T/S): {avg_train_t:.4f}/{avg_train_s:.4f} | "
                 f"Phy Loss: {avg_train_phy:.4f} (Surf:{loss_dict['loss_surf']:.3f}, MLD:{loss_dict['loss_mld']:.3f}, SLA:{loss_dict['loss_sla']:.3f}, Grad:{loss_dict['loss_grad']:.3f}) | "
                 f"Val MSE (T/S): {avg_val_t:.4f}/{avg_val_s:.4f} | "
                 f"Weights (w1/w2): {w1:.2f}/{w2:.2f}"
             )
+            print(log_line)
+            with open(log_file_path, "a", encoding="utf-8") as f_log:
+                f_log.write(log_line + "\n")
 
             if avg_val_mse < best_val_loss:
                 best_val_loss = avg_val_mse
-                save_path = os.path.join(args.output_dir, "swin_ocean_pinn_best.pth")
-                torch.save({
+                ckpt_data = {
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'adaptive_loss_state_dict': adaptive_loss_fn.state_dict(),
                     'val_loss': best_val_loss,
-                    'stats': train_dataset.stats
-                }, save_path)
-                print(f"--> [Checkpoint] Updated optimal model saved to {save_path}")
+                    'stats': train_dataset.stats,
+                    'tag': res_dirs['tag']
+                }
+                save_path_tag = os.path.join(res_dirs['ckpt_dir'], "swin_ocean_pinn_best.pth")
+                torch.save(ckpt_data, save_path_tag)
+                save_path_legacy = os.path.join(args.output_dir, "swin_ocean_pinn_best.pth")
+                torch.save(ckpt_data, save_path_legacy)
+                print(f"--> [Checkpoint] Updated optimal model saved to {save_path_tag}")
+                with open(log_file_path, "a", encoding="utf-8") as f_log:
+                    f_log.write(f"--> [Checkpoint] Updated optimal model saved to {save_path_tag} (Val Loss: {best_val_loss:.6f})\n")
 
-    print("\n[Complete] Training finished successfully.")
+    done_msg = f"\n[Complete] Training finished successfully. Logs saved to: {log_file_path}"
+    print(done_msg)
+    with open(log_file_path, "a", encoding="utf-8") as f_log:
+        f_log.write(done_msg + "\n")
 
 
 if __name__ == "__main__":

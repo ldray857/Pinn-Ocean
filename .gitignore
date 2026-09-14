@@ -50,6 +50,8 @@ runs/
 logs/
 results/*
 !results/.gitkeep
+result/*
+!result/.gitkeep
 checkpoints/*
 !checkpoints/.gitkeep
 *.log

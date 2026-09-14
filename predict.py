@@ -18,6 +18,7 @@ from torch.utils.data import DataLoader
 from configs.default_config import ModelConfig
 from pinn_ocean.models.swin_ocean_pinn import SwinOceanPINN
 from pinn_ocean.datasets.ocean_dataset import OceanContinuousDataset
+from pinn_ocean.utils import get_result_dirs
 
 
 def parse_args():
@@ -34,8 +35,16 @@ def parse_args():
         help="Path to trained Swin-Ocean-PINN model weights"
     )
     parser.add_argument(
-        "--output_file", type=str, default="data/2020/pacific_reconstructed_3d.nc",
-        help="Path where reconstructed NetCDF (aligned with GLORYS) will be saved"
+        "--output_file", type=str, default=None,
+        help="Path where reconstructed NetCDF (aligned with GLORYS) will be saved (default: result/<year_tag>/con/pacific_reconstructed_3d_<mode>.nc)"
+    )
+    parser.add_argument(
+        "--result_dir", type=str, default="result",
+        help="Root result directory (default: result)"
+    )
+    parser.add_argument(
+        "--tag", type=str, default=None,
+        help="Experiment/year tag name (default: auto-detected, e.g. 2015_2020)"
     )
     parser.add_argument(
         "--export_regular", action="store_true", default=True,
@@ -72,18 +81,6 @@ def predict_and_export():
     args = parse_args()
     device = torch.device(args.device)
 
-    print("=" * 70)
-    print("      Swin-Ocean-PINN 3-D Thermohaline Field Reconstruction       ")
-    print("=" * 70)
-    print(f" Computing Device: {device}")
-    print(f" Input Data Dir  : {os.path.abspath(args.data_dir)}")
-    print(f" Model Checkpoint: {os.path.abspath(args.checkpoint)}")
-    print(f" Output NC Target: {os.path.abspath(args.output_file)}")
-    print(f" Reconstruction  : {args.mode.upper()} partition")
-    if args.years:
-        print(f" Filter Years    : {args.years}")
-    print("=" * 70)
-
     sla_path = os.path.join(args.data_dir, "pacific_sla_2013_2021.nc")
     gt_path = os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal_2013_2021.nc")
 
@@ -94,6 +91,47 @@ def predict_and_export():
         print(f"[Error] Required input NetCDF files not found in {args.data_dir}: {e}", file=sys.stderr)
         sys.exit(1)
 
+    # 2. Setup standardized result directory structure: result/<year_tag>/con/
+    res_dirs = get_result_dirs(
+        result_dir=args.result_dir,
+        tag=args.tag,
+        dataset=dataset,
+        data_dir=args.data_dir,
+        years=args.years
+    )
+
+    # Checkpoint resolution: prioritize result/<year_tag>/checkpoints/ if default was provided
+    ckpt_path = args.checkpoint
+    tag_ckpt = os.path.join(res_dirs['ckpt_dir'], "swin_ocean_pinn_best.pth")
+    if args.checkpoint == "checkpoints/swin_ocean_pinn_best.pth" and os.path.exists(tag_ckpt):
+        ckpt_path = tag_ckpt
+
+    # Output file resolution: default to result/<year_tag>/con/pacific_reconstructed_3d_<mode>.nc
+    output_file = args.output_file
+    if output_file is None:
+        output_file = os.path.join(res_dirs['con_dir'], f"pacific_reconstructed_3d_{args.mode}.nc")
+
+    output_regular_file = args.output_regular_file
+    if output_regular_file is None and args.export_regular:
+        output_regular_file = (
+            output_file[:-3] + "_regular.nc" if output_file.endswith(".nc") else output_file + "_regular.nc"
+        )
+
+    print("=" * 70)
+    print("      Swin-Ocean-PINN 3-D Thermohaline Field Reconstruction       ")
+    print("=" * 70)
+    print(f" Computing Device: {device}")
+    print(f" Input Data Dir  : {os.path.abspath(args.data_dir)}")
+    print(f" Result Tag      : {res_dirs['tag']} ({res_dirs['exp_dir']})")
+    print(f" Model Checkpoint: {os.path.abspath(ckpt_path)}")
+    print(f" Output Target NC: {os.path.abspath(output_file)}")
+    if args.export_regular and output_regular_file:
+        print(f" Output Reg Voxel: {os.path.abspath(output_regular_file)}")
+    print(f" Reconstruction  : {args.mode.upper()} partition")
+    if args.years:
+        print(f" Filter Years    : {args.years}")
+    print("=" * 70)
+
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
 
     stats = dataset.stats
@@ -102,7 +140,7 @@ def predict_and_export():
     longitudes = dataset.gt_ds.longitude.values
     times = dataset.times
 
-    # 2. Initialize Model & Load Trained Weights
+    # 3. Initialize Model & Load Trained Weights
     model_cfg = ModelConfig()
     model = SwinOceanPINN(
         in_channels=model_cfg.in_channels,
@@ -112,15 +150,15 @@ def predict_and_export():
         out_dim=model_cfg.out_dim
     ).to(device)
 
-    if os.path.exists(args.checkpoint):
-        checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    if os.path.exists(ckpt_path):
+        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         stats = checkpoint.get('stats', dataset.stats)
         epoch = checkpoint.get('epoch', 'Unknown')
         val_loss = checkpoint.get('val_loss', 'N/A')
-        print(f"--> Loaded model weights from {args.checkpoint} (Epoch: {epoch}, Val Loss: {val_loss})")
+        print(f"--> Loaded model weights from {ckpt_path} (Epoch: {epoch}, Val Loss: {val_loss})")
     else:
-        print(f"[Notice] Checkpoint {args.checkpoint} not found. Running with initialized weights.")
+        print(f"[Notice] Checkpoint {ckpt_path} not found. Running with initialized weights.")
 
     model.eval()
 
@@ -230,7 +268,7 @@ def predict_and_export():
     )
 
     # 5. Export to NetCDF4 (Fully compatible with ArcGIS Pro Voxel Layer & Multidimensional Raster)
-    out_dir = os.path.dirname(args.output_file)
+    out_dir = os.path.dirname(output_file)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
 
@@ -248,10 +286,10 @@ def predict_and_export():
         "time": {"_FillValue": None, "dtype": "float64"}
     })
 
-    print(f"\nWriting reconstructed dataset to NetCDF4 file: {args.output_file} ...")
-    out_ds.to_netcdf(args.output_file, engine="netcdf4", encoding=encoding)
+    print(f"\nWriting reconstructed dataset to NetCDF4 file: {output_file} ...")
+    out_ds.to_netcdf(output_file, engine="netcdf4", encoding=encoding)
 
-    file_size_mb = os.path.getsize(args.output_file) / (1024 * 1024)
+    file_size_mb = os.path.getsize(output_file) / (1024 * 1024)
     print(f"--> [Success] Aligned NetCDF Export complete! File size: {file_size_mb:.2f} MB")
     print(f"    Dimensions: {dict(out_ds.sizes)}")
     print(f"    Temperature Range: {float(all_pred_thetao.min()):.2f}°C ~ {float(all_pred_thetao.max()):.2f}°C")
@@ -262,9 +300,7 @@ def predict_and_export():
         all_pred_thetao_reg = np.stack(all_pred_thetao_reg, axis=0)
         all_pred_so_reg = np.stack(all_pred_so_reg, axis=0)
 
-        reg_file = args.output_regular_file or (
-            args.output_file[:-3] + "_regular.nc" if args.output_file.endswith(".nc") else args.output_file + "_regular.nc"
-        )
+        reg_file = output_regular_file
 
         reg_ds = xr.Dataset(
             data_vars={

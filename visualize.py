@@ -20,6 +20,7 @@ from configs.default_config import ModelConfig
 from pinn_ocean.models.swin_ocean_pinn import SwinOceanPINN
 from pinn_ocean.datasets.ocean_dataset import OceanContinuousDataset
 from pinn_ocean.utils.metrics import calc_mld
+from pinn_ocean.utils import get_result_dirs
 from pinn_ocean.visualization import (
     plot_vertical_profiles,
     plot_ts_diagram,
@@ -45,8 +46,16 @@ def parse_args():
         help="Path to trained Swin-Ocean-PINN model weights"
     )
     parser.add_argument(
-        "--output_dir", type=str, default="results",
-        help="Directory where output figure PNGs will be saved"
+        "--output_dir", type=str, default=None,
+        help="Directory where output figure PNGs will be saved (default: result/<year_tag>/pic/)"
+    )
+    parser.add_argument(
+        "--result_dir", type=str, default="result",
+        help="Root result directory (default: result)"
+    )
+    parser.add_argument(
+        "--tag", type=str, default=None,
+        help="Experiment/year tag name (default: auto-detected, e.g. 2015_2020)"
     )
     parser.add_argument(
         "--years", nargs="+", type=int, default=None,
@@ -66,18 +75,6 @@ def parse_args():
 def run_visualization():
     args = parse_args()
     device = torch.device(args.device)
-    os.makedirs(args.output_dir, exist_ok=True)
-
-    print("=" * 70)
-    print("      Pinn-Ocean Scientific Visualization & Physical Validation    ")
-    print("=" * 70)
-    print(f" Device     : {device}")
-    print(f" Data Dir   : {os.path.abspath(args.data_dir)}")
-    print(f" Checkpoint : {os.path.abspath(args.checkpoint)}")
-    print(f" Output Dir : {os.path.abspath(args.output_dir)}")
-    if args.years:
-        print(f" Filter Years: {args.years}")
-    print("=" * 70)
 
     sla_path = os.path.join(args.data_dir, "pacific_sla_2013_2021.nc")
     gt_path = os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal_2013_2021.nc")
@@ -89,11 +86,41 @@ def run_visualization():
         print(f"[Error] Required input NetCDF files not found in {args.data_dir}: {e}", file=sys.stderr)
         sys.exit(1)
 
+    # 2. Setup standardized result directory structure: result/<year_tag>/pic/
+    res_dirs = get_result_dirs(
+        result_dir=args.result_dir,
+        tag=args.tag,
+        dataset=dataset,
+        data_dir=args.data_dir,
+        years=args.years
+    )
+
+    out_dir = args.output_dir if args.output_dir is not None else res_dirs['pic_dir']
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Checkpoint resolution: prioritize result/<year_tag>/checkpoints/ if default was provided
+    ckpt_path = args.checkpoint
+    tag_ckpt = os.path.join(res_dirs['ckpt_dir'], "swin_ocean_pinn_best.pth")
+    if args.checkpoint == "checkpoints/swin_ocean_pinn_best.pth" and os.path.exists(tag_ckpt):
+        ckpt_path = tag_ckpt
+
+    print("=" * 70)
+    print("      Pinn-Ocean Scientific Visualization & Physical Validation    ")
+    print("=" * 70)
+    print(f" Device     : {device}")
+    print(f" Data Dir   : {os.path.abspath(args.data_dir)}")
+    print(f" Result Tag : {res_dirs['tag']} ({res_dirs['exp_dir']})")
+    print(f" Checkpoint : {os.path.abspath(ckpt_path)}")
+    print(f" Output Pic : {os.path.abspath(out_dir)}")
+    if args.years:
+        print(f" Filter Years: {args.years}")
+    print("=" * 70)
+
     loader = DataLoader(dataset, batch_size=1, shuffle=False)
     stats = dataset.stats
     depths = dataset.depths
 
-    # 2. Load Trained Model
+    # 3. Load Trained Model
     model_cfg = ModelConfig()
     model = SwinOceanPINN(
         in_channels=model_cfg.in_channels,
@@ -103,13 +130,13 @@ def run_visualization():
         out_dim=model_cfg.out_dim
     ).to(device)
 
-    if os.path.exists(args.checkpoint):
-        checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    if os.path.exists(ckpt_path):
+        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         stats = checkpoint.get('stats', dataset.stats)
-        print(f"--> Loaded model weights from {args.checkpoint} (Epoch: {checkpoint.get('epoch', 'N/A')})")
+        print(f"--> Loaded model weights from {ckpt_path} (Epoch: {checkpoint.get('epoch', 'N/A')})")
     else:
-        print(f"[Warning] Checkpoint {args.checkpoint} not found. Running with initialized weights.")
+        print(f"[Warning] Checkpoint {ckpt_path} not found. Running with initialized weights.")
 
     model.eval()
 
@@ -163,38 +190,38 @@ def run_visualization():
     all_true_mld = np.array(all_true_mld)
     all_pred_mld = np.array(all_pred_mld)
 
-    # 3. Call Modular Visualization Routines
+    # 4. Call Modular Visualization Routines
     print("\n[1/4] Generating Figure 1: Representative Station Vertical Profile Comparison...")
     fig1 = plot_vertical_profiles(
         first_step_true_t, first_step_pred_t,
         first_step_true_s, first_step_pred_s,
-        depths, save_path=os.path.join(args.output_dir, "fig1_profile_comparison.png")
+        depths, save_path=os.path.join(out_dir, "fig1_profile_comparison.png")
     )
     print(f"      --> Saved to {fig1}")
 
     print("[2/4] Generating Figure 2: Temperature-Salinity (T-S) Consistency Diagram...")
     fig2 = plot_ts_diagram(
         all_true_t, all_pred_t, all_true_s, all_pred_s,
-        save_path=os.path.join(args.output_dir, "fig2_ts_diagram.png")
+        save_path=os.path.join(out_dir, "fig2_ts_diagram.png")
     )
     print(f"      --> Saved to {fig2}")
 
     print("[3/4] Generating Figure 3: Full-Depth Scatter Density Validation with R^2...")
     fig3 = plot_scatter_density(
         all_true_t, all_pred_t, all_true_s, all_pred_s,
-        save_path=os.path.join(args.output_dir, "fig3_scatter_density.png")
+        save_path=os.path.join(out_dir, "fig3_scatter_density.png")
     )
     print(f"      --> Saved to {fig3}")
 
     print("[4/4] Generating Figure 4: Mixed Layer Depth (MLD) Scatter Validation...")
     fig4 = plot_mld_validation(
         all_true_mld, all_pred_mld,
-        save_path=os.path.join(args.output_dir, "fig4_mld_validation.png")
+        save_path=os.path.join(out_dir, "fig4_mld_validation.png")
     )
     print(f"      --> Saved to {fig4}")
 
     print("\n" + "=" * 70)
-    print(f" [SUCCESS] All 4 scientific visualization figures exported to {args.output_dir}/")
+    print(f" [SUCCESS] All 4 scientific visualization figures exported to {out_dir}/")
     print("=" * 70)
 
 
