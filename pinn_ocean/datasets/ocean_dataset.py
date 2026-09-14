@@ -12,14 +12,53 @@ from torch.utils.data import Dataset
 from typing import Optional, List, Union
 
 
-def _resolve_and_load_dataset(target_path, default_filename, years=None):
+KNOWN_DATASET_PREFIXES = [
+    "pacific_glorys_3d_temp_sal",
+    "pacific_sla",
+    "pacific_sst",
+    "pacific_sss",
+    "pacific_wind"
+]
+
+
+def _extract_dataset_prefix(filename_or_path: str) -> str:
+    """Extract standard dataset prefix (e.g. pacific_sla) from filename or path."""
+    base = os.path.basename(filename_or_path)
+    for p in KNOWN_DATASET_PREFIXES:
+        if base.startswith(p):
+            return p
+    clean = base[:-3] if base.endswith(".nc") else base
+    parts = clean.split("_")
+    non_year = [p for p in parts if not p.isdigit()]
+    return "_".join(non_year) if non_year else clean
+
+
+def _find_matching_file(folder: str, prefix: str, year: Optional[str] = None) -> Optional[str]:
+    """Find NetCDF file matching prefix and optional year inside folder."""
+    if not os.path.isdir(folder):
+        return None
+    files = [f for f in os.listdir(folder) if f.endswith(".nc")]
+    if year:
+        exact_year_name = f"{prefix}_{year}.nc"
+        if exact_year_name in files:
+            return os.path.join(folder, exact_year_name)
+        year_matches = [f for f in files if f.startswith(prefix) and str(year) in f]
+        if year_matches:
+            return os.path.join(folder, sorted(year_matches)[0])
+    prefix_matches = [f for f in files if f.startswith(prefix)]
+    if prefix_matches:
+        return os.path.join(folder, sorted(prefix_matches)[0])
+    return None
+
+
+def _resolve_and_load_dataset(target_path: Optional[str], default_filename: str, years: Optional[List[int]] = None) -> Optional[xr.Dataset]:
     """
-    Loads an xarray Dataset from:
-    1. An existing NetCDF file path.
-    2. A directory containing `default_filename`.
-    3. A directory containing yearly subfolders (e.g. 2017/, 2018/, ...) that contain `default_filename`.
+    Intelligently resolves NetCDF dataset from multiple potential structures:
+    1. Direct file path (e.g. data/2015/pacific_sla_2015.nc or data/pacific_sla_2013_2021.nc)
+    2. A directory containing the target file matching prefix (e.g. data/2020)
+    3. A directory containing yearly subfolders (e.g. 2015/, 2016/, ...) with prefix_{year}.nc
        If multiple year subfolders are detected, they are opened and concatenated along 'time'.
-       
+
     Returns:
         xr.Dataset or None if file cannot be found.
     """
@@ -36,37 +75,42 @@ def _resolve_and_load_dataset(target_path, default_filename, years=None):
     if not os.path.exists(check_dir):
         return None
 
-    # 1. Direct file check within check_dir
-    direct_file = os.path.join(check_dir, default_filename)
-    if os.path.isfile(direct_file):
-        return xr.open_dataset(direct_file)
+    prefix = _extract_dataset_prefix(default_filename)
 
-    # 2. Check for 4-digit yearly subdirectories
+    # 1. Check for 4-digit yearly subdirectories
+    subdirs = []
     try:
         subdirs = [
             d for d in os.listdir(check_dir)
             if d.isdigit() and len(d) == 4 and os.path.isdir(os.path.join(check_dir, d))
         ]
     except OSError:
-        return None
+        pass
 
-    if years:
-        year_set = set(int(y) for y in years)
-        subdirs = [d for d in subdirs if int(d) in year_set]
+    if subdirs:
+        if years:
+            year_set = set(int(y) for y in years)
+            subdirs = [d for d in subdirs if int(d) in year_set]
 
-    subdirs.sort(key=lambda x: int(x))
+        subdirs.sort(key=lambda x: int(x))
 
-    loaded_datasets = []
-    for d in subdirs:
-        yr_file = os.path.join(check_dir, d, default_filename)
-        if os.path.isfile(yr_file):
-            loaded_datasets.append(xr.open_dataset(yr_file))
+        loaded_datasets = []
+        for d in subdirs:
+            yr_dir = os.path.join(check_dir, d)
+            yr_file = _find_matching_file(yr_dir, prefix, year=d)
+            if yr_file and os.path.isfile(yr_file):
+                loaded_datasets.append(xr.open_dataset(yr_file))
 
-    if len(loaded_datasets) > 1:
-        print(f"[Dataset] Concatenating {len(loaded_datasets)} yearly files for '{default_filename}' across: {subdirs}")
-        return xr.concat(loaded_datasets, dim='time')
-    elif len(loaded_datasets) == 1:
-        return loaded_datasets[0]
+        if len(loaded_datasets) > 1:
+            print(f"[Dataset] Concatenating {len(loaded_datasets)} yearly files for '{prefix}' across: {subdirs}")
+            return xr.concat(loaded_datasets, dim='time')
+        elif len(loaded_datasets) == 1:
+            return loaded_datasets[0]
+
+    # 2. Direct file check within check_dir
+    direct_match = _find_matching_file(check_dir, prefix)
+    if direct_match and os.path.isfile(direct_match):
+        return xr.open_dataset(direct_match)
 
     return None
 
@@ -93,8 +137,8 @@ class OceanContinuousDataset(Dataset):
         self.mode = mode
         
         # 1. Load core NetCDF datasets (SLA and 3D Ground Truth)
-        self.sla_ds_full = _resolve_and_load_dataset(sla_path, "pacific_sla_2013_2021.nc", years=years)
-        self.gt_ds_full = _resolve_and_load_dataset(gt_path, "pacific_glorys_3d_temp_sal_2013_2021.nc", years=years)
+        self.sla_ds_full = _resolve_and_load_dataset(sla_path, "pacific_sla.nc", years=years)
+        self.gt_ds_full = _resolve_and_load_dataset(gt_path, "pacific_glorys_3d_temp_sal.nc", years=years)
 
         if self.sla_ds_full is None or self.gt_ds_full is None:
             raise FileNotFoundError(
@@ -107,9 +151,9 @@ class OceanContinuousDataset(Dataset):
         if not os.path.isdir(data_dir):
             data_dir = os.path.dirname(os.path.abspath(sla_path))
 
-        sst_ds = _resolve_and_load_dataset(sst_path or data_dir, "pacific_sst_2013_2021.nc", years=years)
-        sss_ds = _resolve_and_load_dataset(sss_path or data_dir, "pacific_sss_2013_2021.nc", years=years)
-        wind_ds = _resolve_and_load_dataset(wind_path or data_dir, "pacific_wind_2013_2021.nc", years=years)
+        sst_ds = _resolve_and_load_dataset(sst_path or data_dir, "pacific_sst.nc", years=years)
+        sss_ds = _resolve_and_load_dataset(sss_path or data_dir, "pacific_sss.nc", years=years)
+        wind_ds = _resolve_and_load_dataset(wind_path or data_dir, "pacific_wind.nc", years=years)
 
         total_months = len(self.gt_ds_full.time)
         n_train = max(1, int(total_months * train_ratio))

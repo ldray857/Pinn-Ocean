@@ -37,38 +37,50 @@ DATASET_IDS = {
     "sla": {
         "dataset_id": "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1M-m",
         "variables": ["sla"],
-        "filename": "pacific_sla_2013_2021.nc",
+        "prefix": "pacific_sla",
         "description": "Sea Surface Height Anomaly (DUACS L4)"
     },
     # 2. GLORYS12V1 3-D Reanalysis (0.083 deg, Monthly, 0-1000m)
     "glorys_3d": {
         "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1M-m",
         "variables": ["thetao", "so"],
-        "filename": "pacific_glorys_3d_temp_sal_2013_2021.nc",
+        "prefix": "pacific_glorys_3d_temp_sal",
         "description": "3-D Potential Temperature and Practical Salinity (GLORYS12V1)"
     },
     # 3. Sea Surface Temperature (OSTIA / Reprocessed L4, Monthly)
     "sst": {
         "dataset_id": "METOFFICE-GLO-SST-L4-REP-OBS-SST",
         "variables": ["analysed_sst"],
-        "filename": "pacific_sst_2013_2021.nc",
+        "prefix": "pacific_sst",
         "description": "Sea Surface Temperature (OSTIA L4)"
     },
     # 4. Sea Surface Salinity (Multi-Observation SMOS/SMAP L4 OI, LOPS-v2025)
     "sss": {
         "dataset_id": "cmems_obs-mob_glo_phy-sal_my_multi-oi_P7D-c",
         "variables": ["sss"],
-        "filename": "pacific_sss_2013_2021.nc",
+        "prefix": "pacific_sss",
         "description": "Sea Surface Salinity (SMOS/SMAP L4 OI - LOPS-v2025)"
     },
     # 5. Sea Surface Wind (Blended Wind L4, Monthly)
     "wind": {
         "dataset_id": "cmems_obs-wind_glo_phy_my_l4_P1M",
         "variables": ["eastward_wind", "northward_wind"],
-        "filename": "pacific_wind_2013_2021.nc",
+        "prefix": "pacific_wind",
         "description": "Sea Surface Wind Vectors U/V (Scatterometer & Model Monthly L4)"
     }
 }
+
+
+def resolve_output_filename(prefix: str, start_time: str, end_time: str) -> str:
+    """Generate NetCDF filename dynamically based on start and end time."""
+    sy = str(start_time)[:4]
+    ey = str(end_time)[:4]
+    if sy.isdigit() and ey.isdigit():
+        if sy == ey:
+            return f"{prefix}_{sy}.nc"
+        else:
+            return f"{prefix}_{sy}_{ey}.nc"
+    return f"{prefix}.nc"
 
 
 def parse_args():
@@ -122,10 +134,11 @@ def download_dataset(cm_module, key, meta, args, output_dir=None, start_time=Non
     """Download a single dataset subset."""
     target_dir = output_dir or args.output_dir
     os.makedirs(target_dir, exist_ok=True)
-    output_path = os.path.join(target_dir, meta["filename"])
 
     t_start = start_time or args.start_time
     t_end = end_time or args.end_time
+    filename = resolve_output_filename(meta["prefix"], t_start, t_end)
+    output_path = os.path.join(target_dir, filename)
 
     print(f"\n[{key.upper()}] {meta['description']}")
     print(f"  Dataset ID : {meta['dataset_id']}")
@@ -147,7 +160,7 @@ def download_dataset(cm_module, key, meta, args, output_dir=None, start_time=Non
         "start_datetime": t_start,
         "end_datetime": t_end,
         "output_directory": target_dir,
-        "output_filename": meta["filename"],
+        "output_filename": filename,
         "overwrite": False
     }
 

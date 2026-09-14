@@ -26,8 +26,7 @@ def parse_args():
         description="Reconstruct 3-D Pacific Ocean Thermohaline Fields and Export to NetCDF."
     )
     parser.add_argument(
-        "--data_dir", type=str,
-        default="data/2020" if os.path.exists("data/2020/pacific_sla_2013_2021.nc") else "data",
+        "--data_dir", type=str, default="data",
         help="Directory containing downloaded NetCDF input datasets"
     )
     parser.add_argument(
@@ -81,8 +80,8 @@ def predict_and_export():
     args = parse_args()
     device = torch.device(args.device)
 
-    sla_path = os.path.join(args.data_dir, "pacific_sla_2013_2021.nc")
-    gt_path = os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal_2013_2021.nc")
+    sla_path = os.path.join(args.data_dir, "pacific_sla.nc")
+    gt_path = os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal.nc")
 
     # 1. Load Dataset
     try:

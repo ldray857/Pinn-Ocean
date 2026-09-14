@@ -59,11 +59,11 @@ class TrainConfig:
 @dataclass
 class DataConfig:
     # Local paths for Pacific Ocean datasets
-    sla_path: str = "data/pacific_sla_2013_2021.nc"
-    gt_path: str = "data/pacific_glorys_3d_temp_sal_2013_2021.nc"
-    sst_path: str = "data/pacific_sst_2013_2021.nc"
-    sss_path: str = "data/pacific_sss_2013_2021.nc"
-    wind_path: str = "data/pacific_wind_2013_2021.nc"
+    sla_path: str = "data/pacific_sla.nc"
+    gt_path: str = "data/pacific_glorys_3d_temp_sal.nc"
+    sst_path: str = "data/pacific_sst.nc"
+    sss_path: str = "data/pacific_sss.nc"
+    wind_path: str = "data/pacific_wind.nc"
     
     # Open Pacific bounding box (100% pure open ocean, zero land points)
     min_lon: float = 145.0

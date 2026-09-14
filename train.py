@@ -22,9 +22,8 @@ from pinn_ocean.utils import get_result_dirs
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Swin-Ocean-PINN Model")
-    parser.add_argument("--data_dir", type=str,
-                        default="data/2020" if os.path.exists("data/2020/pacific_sla_2013_2021.nc") else "data",
-                        help="Path to folder containing NetCDF datasets (default: auto-detect data/2020 or data)")
+    parser.add_argument("--data_dir", type=str, default="data",
+                        help="Path to folder containing NetCDF datasets (default: data)")
     parser.add_argument("--sla_path", type=str, default=None, help="Custom path to SLA .nc file")
     parser.add_argument("--gt_path", type=str, default=None, help="Custom path to GLORYS 3D .nc file")
     parser.add_argument("--sst_path", type=str, default=None, help="Custom path to SST .nc file")
@@ -58,8 +57,8 @@ def main():
     print("==================================================================")
 
     # 1. Dataset & DataLoader
-    sla_path = args.sla_path or os.path.join(args.data_dir, "pacific_sla_2013_2021.nc")
-    gt_path = args.gt_path or os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal_2013_2021.nc")
+    sla_path = args.sla_path or os.path.join(args.data_dir, "pacific_sla.nc")
+    gt_path = args.gt_path or os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal.nc")
 
     try:
         train_dataset = OceanContinuousDataset(

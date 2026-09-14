@@ -19,9 +19,8 @@ from pinn_ocean.utils import get_result_dirs
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate Swin-Ocean-PINN Checkpoint")
-    parser.add_argument("--data_dir", type=str,
-                        default="data/2020" if os.path.exists("data/2020/pacific_sla_2013_2021.nc") else "data",
-                        help="Path to folder containing NetCDF datasets (default: auto-detect data/2020 or data)")
+    parser.add_argument("--data_dir", type=str, default="data",
+                        help="Path to folder containing NetCDF datasets (default: data)")
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="Path to trained model weights (default: result/<year_tag>/checkpoints/swin_ocean_pinn_best.pth)")
     parser.add_argument("--mode", type=str, default="test", choices=["train", "val", "test", "all"],
@@ -40,8 +39,8 @@ def evaluate():
     args = parse_args()
     device = torch.device(args.device)
 
-    sla_path = os.path.join(args.data_dir, "pacific_sla_2013_2021.nc")
-    gt_path = os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal_2013_2021.nc")
+    sla_path = os.path.join(args.data_dir, "pacific_sla.nc")
+    gt_path = os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal.nc")
 
     try:
         test_dataset = OceanContinuousDataset(sla_path, gt_path, years=args.years, mode=args.mode)
