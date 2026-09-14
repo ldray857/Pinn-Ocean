@@ -49,6 +49,10 @@ def parse_args():
         help="Directory where output figure PNGs will be saved"
     )
     parser.add_argument(
+        "--years", nargs="+", type=int, default=None,
+        help="Optional specific years to include (e.g. --years 2017 2018 2019 2020)"
+    )
+    parser.add_argument(
         "--mode", type=str, default="test", choices=["train", "val", "test", "all"],
         help="Dataset subset partition to evaluate ('train', 'val', 'test', or 'all')"
     )
@@ -71,17 +75,20 @@ def run_visualization():
     print(f" Data Dir   : {os.path.abspath(args.data_dir)}")
     print(f" Checkpoint : {os.path.abspath(args.checkpoint)}")
     print(f" Output Dir : {os.path.abspath(args.output_dir)}")
+    if args.years:
+        print(f" Filter Years: {args.years}")
     print("=" * 70)
 
     sla_path = os.path.join(args.data_dir, "pacific_sla_2013_2021.nc")
     gt_path = os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal_2013_2021.nc")
 
-    if not (os.path.exists(sla_path) and os.path.exists(gt_path)):
-        print(f"[Error] Required input NetCDF files not found in {args.data_dir}.", file=sys.stderr)
+    # 1. Load Dataset
+    try:
+        dataset = OceanContinuousDataset(sla_path, gt_path, years=args.years, mode=args.mode)
+    except FileNotFoundError as e:
+        print(f"[Error] Required input NetCDF files not found in {args.data_dir}: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # 1. Load Dataset
-    dataset = OceanContinuousDataset(sla_path, gt_path, mode=args.mode)
     loader = DataLoader(dataset, batch_size=1, shuffle=False)
     stats = dataset.stats
     depths = dataset.depths

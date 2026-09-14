@@ -25,6 +25,8 @@ def parse_args():
                         help="Path to trained model weights")
     parser.add_argument("--mode", type=str, default="test", choices=["train", "val", "test", "all"],
                         help="Dataset partition to evaluate ('train', 'val', 'test', or 'all')")
+    parser.add_argument("--years", nargs="+", type=int, default=None,
+                        help="Optional specific years to include (e.g. --years 2017 2018 2019 2020)")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
 
@@ -37,13 +39,15 @@ def evaluate():
     print("                Swin-Ocean-PINN Model Evaluation                  ")
     print(f" Device: {device} | Checkpoint: {args.checkpoint} | Partition: {args.mode.upper()}")
     print(f" Data Directory: {os.path.abspath(args.data_dir)}")
+    if args.years:
+        print(f" Filter Years  : {args.years}")
     print("==================================================================")
 
     sla_path = os.path.join(args.data_dir, "pacific_sla_2013_2021.nc")
     gt_path = os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal_2013_2021.nc")
 
     try:
-        test_dataset = OceanContinuousDataset(sla_path, gt_path, mode=args.mode)
+        test_dataset = OceanContinuousDataset(sla_path, gt_path, years=args.years, mode=args.mode)
         test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
         print(f"[Dataset] {args.mode.upper()} samples: {len(test_dataset)}")
     except Exception as e:

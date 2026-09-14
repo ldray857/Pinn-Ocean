@@ -35,6 +35,8 @@ def parse_args():
     parser.add_argument("--sampling_points", type=int, default=800, help="Number of spatial sampling points")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--output_dir", type=str, default="checkpoints", help="Output directory for checkpoints")
+    parser.add_argument("--years", nargs="+", type=int, default=None,
+                        help="Optional specific years to include (e.g. --years 2017 2018 2019 2020)")
     return parser.parse_args()
 
 
@@ -59,6 +61,7 @@ def main():
             sst_path=args.sst_path,
             sss_path=args.sss_path,
             wind_path=args.wind_path,
+            years=args.years,
             mode='train'
         )
         val_dataset = OceanContinuousDataset(
@@ -66,6 +69,7 @@ def main():
             sst_path=args.sst_path,
             sss_path=args.sss_path,
             wind_path=args.wind_path,
+            years=args.years,
             mode='val'
         )
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)

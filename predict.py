@@ -54,6 +54,10 @@ def parse_args():
         help="Custom output file path for regular NetCDF (default: auto-appends '_regular.nc')"
     )
     parser.add_argument(
+        "--years", nargs="+", type=int, default=None,
+        help="Optional specific years to include (e.g. --years 2017 2018 2019 2020)"
+    )
+    parser.add_argument(
         "--mode", type=str, default="test", choices=["train", "val", "test", "all"],
         help="Dataset subset partition to reconstruct ('train', 'val', 'test', or 'all')"
     )
@@ -76,18 +80,20 @@ def predict_and_export():
     print(f" Model Checkpoint: {os.path.abspath(args.checkpoint)}")
     print(f" Output NC Target: {os.path.abspath(args.output_file)}")
     print(f" Reconstruction  : {args.mode.upper()} partition")
+    if args.years:
+        print(f" Filter Years    : {args.years}")
     print("=" * 70)
 
     sla_path = os.path.join(args.data_dir, "pacific_sla_2013_2021.nc")
     gt_path = os.path.join(args.data_dir, "pacific_glorys_3d_temp_sal_2013_2021.nc")
 
-    if not (os.path.exists(sla_path) and os.path.exists(gt_path)):
-        print(f"[Error] Required input NetCDF files not found in {args.data_dir}.", file=sys.stderr)
-        print(f"Expected: {sla_path} and {gt_path}", file=sys.stderr)
+    # 1. Load Dataset
+    try:
+        dataset = OceanContinuousDataset(sla_path, gt_path, years=args.years, mode=args.mode)
+    except FileNotFoundError as e:
+        print(f"[Error] Required input NetCDF files not found in {args.data_dir}: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # 1. Load Dataset
-    dataset = OceanContinuousDataset(sla_path, gt_path, mode=args.mode)
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
 
     stats = dataset.stats

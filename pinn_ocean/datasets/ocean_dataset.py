@@ -9,6 +9,66 @@ import torch
 import numpy as np
 import xarray as xr
 from torch.utils.data import Dataset
+from typing import Optional, List, Union
+
+
+def _resolve_and_load_dataset(target_path, default_filename, years=None):
+    """
+    Loads an xarray Dataset from:
+    1. An existing NetCDF file path.
+    2. A directory containing `default_filename`.
+    3. A directory containing yearly subfolders (e.g. 2017/, 2018/, ...) that contain `default_filename`.
+       If multiple year subfolders are detected, they are opened and concatenated along 'time'.
+       
+    Returns:
+        xr.Dataset or None if file cannot be found.
+    """
+    if target_path and os.path.isfile(target_path):
+        return xr.open_dataset(target_path)
+
+    if target_path and os.path.isdir(target_path):
+        check_dir = target_path
+    elif target_path:
+        check_dir = os.path.dirname(os.path.abspath(target_path))
+    else:
+        return None
+
+    if not os.path.exists(check_dir):
+        return None
+
+    # 1. Direct file check within check_dir
+    direct_file = os.path.join(check_dir, default_filename)
+    if os.path.isfile(direct_file):
+        return xr.open_dataset(direct_file)
+
+    # 2. Check for 4-digit yearly subdirectories
+    try:
+        subdirs = [
+            d for d in os.listdir(check_dir)
+            if d.isdigit() and len(d) == 4 and os.path.isdir(os.path.join(check_dir, d))
+        ]
+    except OSError:
+        return None
+
+    if years:
+        year_set = set(int(y) for y in years)
+        subdirs = [d for d in subdirs if int(d) in year_set]
+
+    subdirs.sort(key=lambda x: int(x))
+
+    loaded_datasets = []
+    for d in subdirs:
+        yr_file = os.path.join(check_dir, d, default_filename)
+        if os.path.isfile(yr_file):
+            loaded_datasets.append(xr.open_dataset(yr_file))
+
+    if len(loaded_datasets) > 1:
+        print(f"[Dataset] Concatenating {len(loaded_datasets)} yearly files for '{default_filename}' across: {subdirs}")
+        return xr.concat(loaded_datasets, dim='time')
+    elif len(loaded_datasets) == 1:
+        return loaded_datasets[0]
+
+    return None
 
 
 class OceanContinuousDataset(Dataset):
@@ -28,35 +88,28 @@ class OceanContinuousDataset(Dataset):
         1: Practical Salinity (0-1000m)
     """
     def __init__(self, sla_path, gt_path, sst_path=None, sss_path=None, wind_path=None,
-                 mode='train', train_ratio=0.75, val_ratio=0.15):
+                 years=None, mode='train', train_ratio=0.75, val_ratio=0.15):
         super().__init__()
         self.mode = mode
         
-        if not (os.path.exists(sla_path) and os.path.exists(gt_path)):
+        # 1. Load core NetCDF datasets (SLA and 3D Ground Truth)
+        self.sla_ds_full = _resolve_and_load_dataset(sla_path, "pacific_sla_2013_2021.nc", years=years)
+        self.gt_ds_full = _resolve_and_load_dataset(gt_path, "pacific_glorys_3d_temp_sal_2013_2021.nc", years=years)
+
+        if self.sla_ds_full is None or self.gt_ds_full is None:
             raise FileNotFoundError(
-                f"Required data files not found at {sla_path} or {gt_path}. Please check data path configuration."
+                f"Required data files not found for SLA ({sla_path}) or GLORYS GT ({gt_path}). "
+                "Please check file paths or ensure yearly subdirectories exist."
             )
 
-        data_dir = os.path.dirname(os.path.abspath(sla_path))
-        # Auto-detect auxiliary satellite datasets if not explicitly specified
-        if sst_path is None:
-            candidate = os.path.join(data_dir, "pacific_sst_2013_2021.nc")
-            if os.path.exists(candidate):
-                sst_path = candidate
+        # 2. Resolve auxiliary satellite datasets (SST, SSS, Wind)
+        data_dir = os.path.dirname(os.path.abspath(sla_path)) if os.path.isfile(sla_path) else sla_path
+        if not os.path.isdir(data_dir):
+            data_dir = os.path.dirname(os.path.abspath(sla_path))
 
-        if sss_path is None:
-            candidate = os.path.join(data_dir, "pacific_sss_2013_2021.nc")
-            if os.path.exists(candidate):
-                sss_path = candidate
-
-        if wind_path is None:
-            candidate = os.path.join(data_dir, "pacific_wind_2013_2021.nc")
-            if os.path.exists(candidate):
-                wind_path = candidate
-
-        # 1. Load NetCDF datasets
-        self.sla_ds_full = xr.open_dataset(sla_path)
-        self.gt_ds_full = xr.open_dataset(gt_path)
+        sst_ds = _resolve_and_load_dataset(sst_path or data_dir, "pacific_sst_2013_2021.nc", years=years)
+        sss_ds = _resolve_and_load_dataset(sss_path or data_dir, "pacific_sss_2013_2021.nc", years=years)
+        wind_ds = _resolve_and_load_dataset(wind_path or data_dir, "pacific_wind_2013_2021.nc", years=years)
 
         total_months = len(self.gt_ds_full.time)
         n_train = max(1, int(total_months * train_ratio))
@@ -68,7 +121,7 @@ class OceanContinuousDataset(Dataset):
         val_idx = slice(n_train, n_train + n_val)
         test_idx = slice(n_train + n_val, total_months)
 
-        # 2. Spatially & temporally align observations to GLORYS 3D target grid
+        # 3. Spatially & temporally align observations to GLORYS 3D target grid
         # Align SLA
         sla_aligned_full = self.sla_ds_full.interp(
             time=self.gt_ds_full.time,
@@ -80,8 +133,7 @@ class OceanContinuousDataset(Dataset):
         sla_all = np.nan_to_num(sla_aligned_full.sla.values, nan=0.0)
 
         # Align SST
-        if sst_path and os.path.exists(sst_path):
-            sst_ds = xr.open_dataset(sst_path)
+        if sst_ds is not None:
             sst_aligned = sst_ds.interp(
                 time=self.gt_ds_full.time,
                 latitude=self.gt_ds_full.latitude,
@@ -97,8 +149,7 @@ class OceanContinuousDataset(Dataset):
             sst_all = np.nan_to_num(self.gt_ds_full.thetao.values[:, 0, :, :], nan=0.0)
 
         # Align SSS
-        if sss_path and os.path.exists(sss_path):
-            sss_ds = xr.open_dataset(sss_path)
+        if sss_ds is not None:
             sss_aligned = sss_ds.interp(
                 time=self.gt_ds_full.time,
                 latitude=self.gt_ds_full.latitude,
@@ -112,8 +163,7 @@ class OceanContinuousDataset(Dataset):
             sss_all = np.nan_to_num(self.gt_ds_full.so.values[:, 0, :, :], nan=0.0)
 
         # Align Wind U & V
-        if wind_path and os.path.exists(wind_path):
-            wind_ds = xr.open_dataset(wind_path)
+        if wind_ds is not None:
             wind_aligned = wind_ds.interp(
                 time=self.gt_ds_full.time,
                 latitude=self.gt_ds_full.latitude,

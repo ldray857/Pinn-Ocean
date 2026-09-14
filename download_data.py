@@ -12,6 +12,7 @@ Time Span: 2013-01-01 to 2021-12-31 (108 months)
 import os
 import sys
 import argparse
+from datetime import datetime
 from typing import Optional, List
 
 
@@ -99,6 +100,10 @@ def parse_args():
                         help="CMEMS account username (optional if already logged in via copernicusmarine login)")
     parser.add_argument("--password", type=str, default=None,
                         help="CMEMS account password")
+    parser.add_argument("--by_year", action="store_true", default=True,
+                        help="Organize downloaded data into yearly subdirectories (e.g. data/2017, data/2018) (default: True)")
+    parser.add_argument("--no_by_year", action="store_false", dest="by_year",
+                        help="Download all years directly into output_dir without yearly subdirectories")
     parser.add_argument("--dry_run", action="store_true",
                         help="Print download plan and parameters without making network calls.")
     return parser.parse_args()
@@ -113,12 +118,19 @@ def check_dependencies():
         return False, None
 
 
-def download_dataset(cm_module, key, meta, args):
+def download_dataset(cm_module, key, meta, args, output_dir=None, start_time=None, end_time=None):
     """Download a single dataset subset."""
-    output_path = os.path.join(args.output_dir, meta["filename"])
+    target_dir = output_dir or args.output_dir
+    os.makedirs(target_dir, exist_ok=True)
+    output_path = os.path.join(target_dir, meta["filename"])
+
+    t_start = start_time or args.start_time
+    t_end = end_time or args.end_time
+
     print(f"\n[{key.upper()}] {meta['description']}")
     print(f"  Dataset ID : {meta['dataset_id']}")
     print(f"  Variables  : {meta['variables']}")
+    print(f"  Time Window: {t_start} to {t_end}")
     print(f"  Output File: {output_path}")
 
     if os.path.exists(output_path):
@@ -132,9 +144,9 @@ def download_dataset(cm_module, key, meta, args):
         "maximum_longitude": args.max_lon,
         "minimum_latitude": args.min_lat,
         "maximum_latitude": args.max_lat,
-        "start_datetime": args.start_time,
-        "end_datetime": args.end_time,
-        "output_directory": args.output_dir,
+        "start_datetime": t_start,
+        "end_datetime": t_end,
+        "output_directory": target_dir,
         "output_filename": meta["filename"],
         "overwrite": False
     }
@@ -172,9 +184,10 @@ def main():
     print("      Pinn-Ocean Open Pacific Data Collection Tool (CMEMS)       ")
     print("=" * 70)
     print(f" Target Region : {args.min_lon}°E - {args.max_lon}°E, {args.min_lat}°N - {args.max_lat}°N (Pure Open Ocean)")
-    print(f" Temporal Range: {args.start_time} to {args.end_time} (9 Years / 108 Months)")
+    print(f" Temporal Range: {args.start_time} to {args.end_time}")
     print(f" Depth Range   : {args.min_depth}m - {args.max_depth}m (Subsurface 3-D)")
-    print(f" Output Folder : {os.path.abspath(args.output_dir)}")
+    print(f" Base Output   : {os.path.abspath(args.output_dir)}")
+    print(f" Organization  : {'Yearly subdirectories (--by_year)' if args.by_year else 'Single folder'}")
     print(f" Dry Run Mode  : {'ENABLED (No network request)' if args.dry_run else 'DISABLED'}")
     print("=" * 70)
 
@@ -195,15 +208,56 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    success_count = 0
-    for key in target_keys:
-        if key in DATASET_IDS:
-            ok = download_dataset(cm_module, key, DATASET_IDS[key], args)
-            if ok:
-                success_count += 1
+    # Check if yearly partitioning can be applied
+    start_dt, end_dt = None, None
+    if args.by_year:
+        try:
+            start_dt = datetime.strptime(args.start_time, "%Y-%m-%d")
+            end_dt = datetime.strptime(args.end_time, "%Y-%m-%d")
+        except ValueError:
+            print(f"[Warning] Could not parse start/end time as YYYY-MM-DD. Falling back to single folder mode.")
+            start_dt, end_dt = None, None
+
+    if args.by_year and start_dt and end_dt:
+        start_year = start_dt.year
+        end_year = end_dt.year
+        years = list(range(start_year, end_year + 1))
+        print(f"\n[Mode: Yearly Partitioning] Processing {len(years)} year(s): {years}")
+
+        total_tasks = len(years) * len(target_keys)
+        success_count = 0
+
+        for yr in years:
+            yr_dir = os.path.join(args.output_dir, str(yr))
+            os.makedirs(yr_dir, exist_ok=True)
+
+            yr_start = max(args.start_time, f"{yr}-01-01")
+            yr_end = min(args.end_time, f"{yr}-12-31")
+
+            print("\n" + "-" * 70)
+            print(f">>> Year {yr} | Range: {yr_start} to {yr_end} | Folder: {yr_dir}")
+            print("-" * 70)
+
+            for key in target_keys:
+                if key in DATASET_IDS:
+                    ok = download_dataset(
+                        cm_module, key, DATASET_IDS[key], args,
+                        output_dir=yr_dir, start_time=yr_start, end_time=yr_end
+                    )
+                    if ok:
+                        success_count += 1
+    else:
+        print(f"\n[Mode: Single Folder] Destination: {args.output_dir}")
+        total_tasks = len(target_keys)
+        success_count = 0
+        for key in target_keys:
+            if key in DATASET_IDS:
+                ok = download_dataset(cm_module, key, DATASET_IDS[key], args)
+                if ok:
+                    success_count += 1
 
     print("\n" + "=" * 70)
-    print(f" Collection summary: {success_count}/{len(target_keys)} datasets processed.")
+    print(f" Collection summary: {success_count}/{total_tasks} dataset task(s) processed successfully.")
     print("=" * 70)
 
 

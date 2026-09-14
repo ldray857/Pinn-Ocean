@@ -313,14 +313,17 @@ pip install -r requirements.txt
 
 ### 6.1 数据获取
 
-本项目提供标准脚本直接从 CMEMS 抓取西北太平洋纯深海大洋无陆地区域（145°E–165°E, 30°N–40°N，水深 0.49～1000 m）的月度融合数据：
+本项目提供标准脚本直接从 CMEMS 抓取西北太平洋纯深海大洋无陆地区域（145°E–165°E, 30°N–40°N，水深 0.49～1000 m）的月度融合数据，支持**按年份自动分目录存储**（例如 `data/2017`、`data/2018`、`data/2019`、`data/2020`，通过 `--by_year` 参数控制，默认开启）：
 
 ```bash
-# 预览下载计划与网格参数（无需网络请求）
+# 预览下载计划与网格参数（无需网络请求，自动展示分年计划）
 python download_data.py --dry_run
 
-# 正式下载 2017–2020 四年（48 个月）全量 5 要素数据 (SLA, GLORYS 3D, SST, SSS, Wind)
-python download_data.py --output_dir data/2017_2020 --start_time 2017-01-01 --end_time 2020-12-31 --targets all
+# 正式下载 2017–2020 四年（48 个月）全量 5 要素数据，默认自动按年份拆分保存至 data/2017, data/2018, data/2019, data/2020
+python download_data.py --output_dir data --start_time 2017-01-01 --end_time 2020-12-31 --targets all
+
+# （可选）若希望合并下载至单一文件夹内（传统单目录模式）：
+python download_data.py --output_dir data/2017_2020 --start_time 2017-01-01 --end_time 2020-12-31 --targets all --no_by_year
 ```
 
 ### 6.2 代码自检
@@ -330,9 +333,13 @@ python demo_test.py
 ```
 
 ### 6.3 启动模型进行训练
-在 2017–2020 四年数据集上启动耦合主动物理约束的正式训练：
+在 2017–2020 四年数据集上启动耦合主动物理约束的正式训练（支持直接指定按年分片的根目录或传统单目录，数据管道自动探测并拼接多年度时序）：
 ```bash
 # 启动 2017-2020 四年数据物理训练 (48 个月: 36 个月训练, 7 个月验证, 5 个月独立测试)
+# 方式 A：传入按年拆分的根目录（自动探测拼接或通过 --years 指定年份）
+python train.py --data_dir data --years 2017 2018 2019 2020 --epochs 100 --batch_size 4 --lr 3e-4
+
+# 方式 B：传入合并存储的单文件夹（向下完全兼容）
 python train.py --data_dir data/2017_2020 --epochs 100 --batch_size 4 --lr 3e-4
 
 # 可选：带日志留存启动

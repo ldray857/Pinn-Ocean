@@ -310,14 +310,17 @@ pip install -r requirements.txt
 
 ### 6.1 Data Acquisition
 
-The project provides standard automated scripts to subset and download multi-source satellite observations and 3-D reanalysis for the Northwest Pacific open ocean (145°E–165°E, 30°N–40°N, depth 0.49–1000 m):
+The project provides standard automated scripts to subset and download multi-source satellite observations and 3-D reanalysis for the Northwest Pacific open ocean (145°E–165°E, 30°N–40°N, depth 0.49–1000 m), with support for **automatic yearly subdirectories** (e.g. `data/2017`, `data/2018`, `data/2019`, `data/2020` via `--by_year`, enabled by default):
 
 ```bash
-# Preview subsetting parameters without downloading
+# Preview subsetting parameters and yearly breakdown without downloading
 python download_data.py --dry_run
 
-# Download 2017–2020 four-year (48-month) all 5 variables (SLA, GLORYS 3D, SST, SSS, Wind)
-python download_data.py --output_dir data/2017_2020 --start_time 2017-01-01 --end_time 2020-12-31 --targets all
+# Download 2017–2020 four-year (48-month) all 5 variables partitioned by year into data/2017, data/2018, data/2019, data/2020
+python download_data.py --output_dir data --start_time 2017-01-01 --end_time 2020-12-31 --targets all
+
+# (Optional) Download into a single combined directory (legacy mode)
+python download_data.py --output_dir data/2017_2020 --start_time 2017-01-01 --end_time 2020-12-31 --targets all --no_by_year
 ```
 
 ### 6.2 Code Self-Inspection
@@ -327,9 +330,13 @@ python demo_test.py
 ```
 
 ### 6.3 Model Training
-Train on the 2017–2020 four-year dataset with active physics constraints:
+Train on the 2017–2020 four-year dataset with active physics constraints (supports both yearly subdirectories and single monolithic directories):
 ```bash
 # Train on 2017-2020 four-year dataset (48 months: 36 train, 7 val, 5 test)
+# Option A: Point to yearly partitioned directory (automatically concatenates along time)
+python train.py --data_dir data --years 2017 2018 2019 2020 --epochs 100 --batch_size 4 --lr 3e-4
+
+# Option B: Point to legacy combined directory
 python train.py --data_dir data/2017_2020 --epochs 100 --batch_size 4 --lr 3e-4
 
 # Optional: Log training progress to file
