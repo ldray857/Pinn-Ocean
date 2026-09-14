@@ -11,7 +11,7 @@ import numpy as np
 
 def plot_vertical_profiles(
     true_t, pred_t, true_s, pred_s, depths,
-    save_path="results/fig1_profile_comparison.png",
+    save_path="result/pic/fig1_profile_comparison.png",
     station_coord=None
 ):
     """

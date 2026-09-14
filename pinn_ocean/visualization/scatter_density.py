@@ -13,7 +13,7 @@ from ..utils.metrics import calc_rmse, calc_r2
 
 def plot_scatter_density(
     all_true_t, all_pred_t, all_true_s, all_pred_s,
-    save_path="results/fig3_scatter_density.png",
+    save_path="result/pic/fig3_scatter_density.png",
     gridsize=55
 ):
     """

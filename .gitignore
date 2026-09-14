@@ -48,8 +48,6 @@ data/*
 # Logs and outputs
 runs/
 logs/
-results/*
-!results/.gitkeep
 result/*
 !result/.gitkeep
 checkpoints/*

@@ -13,7 +13,7 @@ from ..utils.metrics import calc_rmse, calc_mae, calc_r2
 
 def plot_mld_validation(
     all_true_mld, all_pred_mld,
-    save_path="results/fig4_mld_validation.png"
+    save_path="result/pic/fig4_mld_validation.png"
 ):
     """
     Plots MLD prediction vs truth scatter validation.

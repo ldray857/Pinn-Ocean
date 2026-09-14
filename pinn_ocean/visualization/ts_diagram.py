@@ -11,7 +11,7 @@ import numpy as np
 
 def plot_ts_diagram(
     all_true_t, all_pred_t, all_true_s, all_pred_s,
-    save_path="results/fig2_ts_diagram.png",
+    save_path="result/pic/fig2_ts_diagram.png",
     max_points=4000
 ):
     """
