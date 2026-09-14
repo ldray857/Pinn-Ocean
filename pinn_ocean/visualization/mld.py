@@ -36,7 +36,7 @@ def plot_mld_validation(
 
     ax.set_title(
         f"上混合层深度 (MLD) 物理界面反演对比\n"
-        f"(RMSE: {rmse_mld:.2f}m, MAE: {mae_mld:.2f}m, R²: {r2_mld:.3f})",
+        f"(RMSE: {rmse_mld:.2f}m, MAE: {mae_mld:.2f}m, $R^2$: {r2_mld:.3f})",
         fontsize=12, fontweight='bold'
     )
     ax.set_xlabel("真值 GLORYS MLD (m)", fontsize=11)

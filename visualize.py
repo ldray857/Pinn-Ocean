@@ -29,7 +29,7 @@ from pinn_ocean.visualization import (
 )
 
 # Publication styling defaults
-plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'DejaVu Sans', 'sans-serif']
+plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False
 plt.rcParams['figure.dpi'] = 300
 
@@ -63,6 +63,18 @@ def parse_args():
     parser.add_argument(
         "--mode", type=str, default="test", choices=["train", "val", "test", "all"],
         help="Dataset subset partition to evaluate ('train', 'val', 'test', or 'all')"
+    )
+    parser.add_argument(
+        "--station_mode", type=str, default="auto_best", choices=["auto_best", "center", "custom"],
+        help="Station selection mode for Figure 1: 'auto_best' (best reconstruction), 'center' (grid center), or 'custom'"
+    )
+    parser.add_argument(
+        "--station_lat", type=float, default=None,
+        help="Specific latitude for representative station in Figure 1 (degrees North, e.g. 34.33)"
+    )
+    parser.add_argument(
+        "--station_lon", type=float, default=None,
+        help="Specific longitude for representative station in Figure 1 (degrees East, e.g. 154.00)"
     )
     parser.add_argument(
         "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu",
@@ -190,11 +202,37 @@ def run_visualization():
     all_pred_mld = np.array(all_pred_mld)
 
     # 4. Call Modular Visualization Routines
+    # Resolve representative station coordinates for Figure 1
+    D, H, W = first_step_true_t.shape
+    lats = dataset.gt_ds.latitude.values
+    lons = dataset.gt_ds.longitude.values
+
+    if args.station_lat is not None and args.station_lon is not None:
+        h_idx = int(np.argmin(np.abs(lats - args.station_lat)))
+        w_idx = int(np.argmin(np.abs(lons - args.station_lon)))
+        station_mode_desc = f"Custom ({lons[w_idx]:.2f}°E, {lats[h_idx]:.2f}°N)"
+    elif args.station_mode == "center":
+        h_idx, w_idx = H // 2, W // 2
+        station_mode_desc = f"Center ({lons[w_idx]:.2f}°E, {lats[h_idx]:.2f}°N)"
+    else:  # auto_best
+        mse_t = np.mean((first_step_pred_t - first_step_true_t) ** 2, axis=0)
+        mse_s = np.mean((first_step_pred_s - first_step_true_s) ** 2, axis=0)
+        norm_err = (mse_t / (stats['std_t'] ** 2)) + (mse_s / (stats['std_s'] ** 2))
+        best_flat = int(np.argmin(norm_err))
+        h_idx, w_idx = np.unravel_index(best_flat, (H, W))
+        station_mode_desc = f"Auto-Best ({lons[w_idx]:.2f}°E, {lats[h_idx]:.2f}°N)"
+
+    station_label = f"{lons[w_idx]:.2f}°E, {lats[h_idx]:.2f}°N"
+    print(f"\n[Profile Station] Mode: {station_mode_desc} (Grid: h={h_idx}, w={w_idx})")
+
     print("\n[1/4] Generating Figure 1: Representative Station Vertical Profile Comparison...")
     fig1 = plot_vertical_profiles(
         first_step_true_t, first_step_pred_t,
         first_step_true_s, first_step_pred_s,
-        depths, save_path=os.path.join(out_dir, "fig1_profile_comparison.png")
+        depths,
+        save_path=os.path.join(out_dir, "fig1_profile_comparison.png"),
+        station_coord=(h_idx, w_idx),
+        station_label=station_label
     )
     print(f"      --> Saved to {fig1}")
 
