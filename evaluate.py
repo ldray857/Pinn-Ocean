@@ -22,8 +22,8 @@ def parse_args():
     parser.add_argument("--data_dir", type=str,
                         default="data/2020" if os.path.exists("data/2020/pacific_sla_2013_2021.nc") else "data",
                         help="Path to folder containing NetCDF datasets (default: auto-detect data/2020 or data)")
-    parser.add_argument("--checkpoint", type=str, default="checkpoints/swin_ocean_pinn_best.pth",
-                        help="Path to trained model weights")
+    parser.add_argument("--checkpoint", type=str, default=None,
+                        help="Path to trained model weights (default: result/<year_tag>/checkpoints/swin_ocean_pinn_best.pth)")
     parser.add_argument("--mode", type=str, default="test", choices=["train", "val", "test", "all"],
                         help="Dataset partition to evaluate ('train', 'val', 'test', or 'all')")
     parser.add_argument("--years", nargs="+", type=int, default=None,
@@ -60,11 +60,11 @@ def evaluate():
         years=args.years
     )
 
-    # Checkpoint resolution: prioritize result/<year_tag>/checkpoints/ if default was provided
+    # Checkpoint resolution: prioritize result/<year_tag>/checkpoints/
     ckpt_path = args.checkpoint
     tag_ckpt = os.path.join(res_dirs['ckpt_dir'], "swin_ocean_pinn_best.pth")
-    if args.checkpoint == "checkpoints/swin_ocean_pinn_best.pth" and os.path.exists(tag_ckpt):
-        ckpt_path = tag_ckpt
+    if ckpt_path is None:
+        ckpt_path = tag_ckpt if os.path.exists(tag_ckpt) else "checkpoints/swin_ocean_pinn_best.pth"
 
     print("==================================================================")
     print("                Swin-Ocean-PINN Model Evaluation                  ")

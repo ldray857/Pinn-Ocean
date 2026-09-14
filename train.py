@@ -35,7 +35,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=3e-4, help="Initial learning rate")
     parser.add_argument("--sampling_points", type=int, default=800, help="Number of spatial sampling points")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--output_dir", type=str, default="checkpoints", help="Output directory for checkpoints")
+    parser.add_argument("--output_dir", type=str, default=None, help="Optional additional directory to copy checkpoints")
     parser.add_argument("--result_dir", type=str, default="result",
                         help="Root result directory (default: result)")
     parser.add_argument("--tag", type=str, default=None,
@@ -48,7 +48,8 @@ def parse_args():
 def main():
     args = parse_args()
     device = torch.device(args.device)
-    os.makedirs(args.output_dir, exist_ok=True)
+    if args.output_dir:
+        os.makedirs(args.output_dir, exist_ok=True)
 
     print("==================================================================")
     print("                Swin-Ocean-PINN Training Pipeline                 ")
@@ -256,8 +257,9 @@ def main():
                 }
                 save_path_tag = os.path.join(res_dirs['ckpt_dir'], "swin_ocean_pinn_best.pth")
                 torch.save(ckpt_data, save_path_tag)
-                save_path_legacy = os.path.join(args.output_dir, "swin_ocean_pinn_best.pth")
-                torch.save(ckpt_data, save_path_legacy)
+                if args.output_dir:
+                    save_path_legacy = os.path.join(args.output_dir, "swin_ocean_pinn_best.pth")
+                    torch.save(ckpt_data, save_path_legacy)
                 print(f"--> [Checkpoint] Updated optimal model saved to {save_path_tag}")
                 with open(log_file_path, "a", encoding="utf-8") as f_log:
                     f_log.write(f"--> [Checkpoint] Updated optimal model saved to {save_path_tag} (Val Loss: {best_val_loss:.6f})\n")

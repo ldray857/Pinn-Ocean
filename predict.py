@@ -31,8 +31,8 @@ def parse_args():
         help="Directory containing downloaded NetCDF input datasets"
     )
     parser.add_argument(
-        "--checkpoint", type=str, default="checkpoints/swin_ocean_pinn_best.pth",
-        help="Path to trained Swin-Ocean-PINN model weights"
+        "--checkpoint", type=str, default=None,
+        help="Path to trained Swin-Ocean-PINN model weights (default: result/<year_tag>/checkpoints/swin_ocean_pinn_best.pth)"
     )
     parser.add_argument(
         "--output_file", type=str, default=None,
@@ -100,11 +100,11 @@ def predict_and_export():
         years=args.years
     )
 
-    # Checkpoint resolution: prioritize result/<year_tag>/checkpoints/ if default was provided
+    # Checkpoint resolution: prioritize result/<year_tag>/checkpoints/
     ckpt_path = args.checkpoint
     tag_ckpt = os.path.join(res_dirs['ckpt_dir'], "swin_ocean_pinn_best.pth")
-    if args.checkpoint == "checkpoints/swin_ocean_pinn_best.pth" and os.path.exists(tag_ckpt):
-        ckpt_path = tag_ckpt
+    if ckpt_path is None:
+        ckpt_path = tag_ckpt if os.path.exists(tag_ckpt) else "checkpoints/swin_ocean_pinn_best.pth"
 
     # Output file resolution: default to result/<year_tag>/con/pacific_reconstructed_3d_<mode>.nc
     output_file = args.output_file
