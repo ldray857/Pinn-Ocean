@@ -25,14 +25,11 @@ def plot_depth_layers_grid(
     true_3d, pred_3d, lons, lats, original_depths,
     target_depths=np.arange(0, 1050, 50),
     var_name="temperature",
-    save_path=None,
-    export_individual_dir=None
+    save_path=None
 ):
     """
     Plots horizontal contour fields at 50m depth intervals.
-    Generates:
-    1. A consolidated publication-quality overview grid across depths.
-    2. Optional individual 3-panel (True, Pred, Error) figures for each 50m depth layer.
+    Generates a consolidated publication-quality overview grid across depths.
     """
     true_interp = interpolate_to_target_depths(true_3d, original_depths, target_depths)
     pred_interp = interpolate_to_target_depths(pred_3d, original_depths, target_depths)
@@ -48,38 +45,7 @@ def plot_depth_layers_grid(
     vmax_field = np.nanpercentile(true_interp, 99)
     err_limit = max(0.5 if is_temp else 0.1, np.nanpercentile(np.abs(error_interp), 98))
 
-    # 1. Export individual layer figures for every 50m level (0, 50, 100, ..., 1000m)
-    if export_individual_dir is not None:
-        os.makedirs(export_individual_dir, exist_ok=True)
-        for idx, z_val in enumerate(target_depths):
-            fig, axes = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
-            
-            # Ground Truth
-            im0 = axes[0].pcolormesh(lons, lats, true_interp[idx], cmap=cmap_field, vmin=vmin_field, vmax=vmax_field, shading='auto')
-            axes[0].set_title(f"GLORYS12V1 Truth @ {int(z_val)}m ({unit})", fontsize=13, fontweight='bold')
-            axes[0].set_xlabel("Longitude (°E)", fontsize=11)
-            axes[0].set_ylabel("Latitude (°N)", fontsize=11)
-            plt.colorbar(im0, ax=axes[0], orientation='vertical', pad=0.02, shrink=0.85)
-
-            # Prediction
-            im1 = axes[1].pcolormesh(lons, lats, pred_interp[idx], cmap=cmap_field, vmin=vmin_field, vmax=vmax_field, shading='auto')
-            axes[1].set_title(f"PINN Prediction @ {int(z_val)}m ({unit})", fontsize=13, fontweight='bold')
-            axes[1].set_xlabel("Longitude (°E)", fontsize=11)
-            plt.colorbar(im1, ax=axes[1], orientation='vertical', pad=0.02, shrink=0.85)
-
-            # Error
-            im2 = axes[2].pcolormesh(lons, lats, error_interp[idx], cmap=cmap_err, vmin=-err_limit, vmax=err_limit, shading='auto')
-            rmse_layer = np.sqrt(np.mean(error_interp[idx]**2))
-            axes[2].set_title(f"Residual (Pred - True) [RMSE: {rmse_layer:.3f}{unit}]", fontsize=13, fontweight='bold')
-            axes[2].set_xlabel("Longitude (°E)", fontsize=11)
-            plt.colorbar(im2, ax=axes[2], orientation='vertical', pad=0.02, shrink=0.85)
-
-            fig.suptitle(f"Northwest Pacific {title_var} Horizontal Slice: Depth = {int(z_val)} m", fontsize=15, fontweight='bold')
-            ind_path = os.path.join(export_individual_dir, f"{var_name}_depth_{int(z_val):04d}m.png")
-            fig.savefig(ind_path, dpi=180)
-            plt.close(fig)
-
-    # 2. Consolidated multi-layer overview figure (Key representative 50m levels)
+    # Consolidated multi-layer overview figure (Key representative 50m levels)
     key_depths = [0, 50, 100, 150, 200, 300, 400, 500, 750, 1000]
     n_rows = len(key_depths)
     fig, axes = plt.subplots(n_rows, 3, figsize=(15, 3.2 * n_rows), constrained_layout=True)

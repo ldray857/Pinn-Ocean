@@ -57,8 +57,7 @@ def download_pacific_dataset(
         "start_datetime": start_time,
         "end_datetime": end_time,
         "output_directory": output_dir,
-        "output_filename": output_filename,
-        "overwrite": False
+        "output_filename": output_filename
     }
     
     if min_depth is not None and max_depth is not None:

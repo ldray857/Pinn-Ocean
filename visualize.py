@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-Scientific Visualization & 3D Volumetric Pipeline for Pinn-Ocean (Swin-Ocean-PINN)
-Orchestrates inference and generates publication-grade 2D/3D oceanographic figures:
-1. Fig 1A: 50m-Interval Layer-by-Layer Subsurface Slices (0-1000m Temperature)
-2. Fig 1B: 50m-Interval Layer-by-Layer Subsurface Slices (0-1000m Salinity)
-3. Fig 2: Full-Depth Vertical Transect Section along Kuroshio Extension (35°N)
-4. Fig 3: Layer-by-Layer Subsurface Metric Profiles (RMSE, MAE, R^2 vs Depth)
-5. Fig 4: Multi-Station Vertical Profiles (4 Contrasting Ocean Dynamic Regimes)
-6. Fig 5: Thermohaline Physical Consistency (T-S Diagram with Isopycnals)
-7. Fig 6: Full-Depth Prediction vs Truth Scatter Density (Hexbin with R^2)
-8. Fig 7: Mixed Layer Depth (MLD) Inversion Validation
-9. Fig 8: 3D Isothermal Surface Topography (15°C Thermocline)
+Scientific Visualization Pipeline for Pinn-Ocean (Swin-Ocean-PINN)
+Orchestrates inference and generates publication-grade oceanographic figures:
+
+01_spatial_layers/ (空间逐层水平切片):
+  - Fig01_depth_layers_50m_temp.png: 50m-Interval Subsurface Slices (0-1000m Temperature)
+  - Fig02_depth_layers_50m_sal.png: 50m-Interval Subsurface Slices (0-1000m Salinity)
+
+02_vertical_profiles/ (垂向结构与误差廓线):
+  - Fig03_layer_metrics_depth.png: Subsurface Metric Profiles (RMSE, MAE, R^2 vs Depth)
+  - Fig04_multi_station_profiles.png: Multi-Station Vertical Profiles (4 Ocean Dynamic Regimes)
+
+03_physical_diagnostics/ (物理诊断与相关性统计):
+  - Fig05_ts_diagram.png: Thermohaline Consistency (T-S Diagram with Isopycnals)
+  - Fig06_scatter_density.png: Full-Depth Prediction vs Truth Scatter Density (Hexbin with R^2)
 """
 
 import os
@@ -26,17 +29,12 @@ from torch.utils.data import DataLoader
 from configs.default_config import ModelConfig
 from pinn_ocean.models.swin_ocean_pinn import SwinOceanPINN
 from pinn_ocean.datasets.ocean_dataset import OceanContinuousDataset
-from pinn_ocean.utils.metrics import calc_mld, calc_layer_metrics
+from pinn_ocean.utils.metrics import calc_layer_metrics
 from pinn_ocean.utils import get_result_dirs
 from pinn_ocean.visualization import (
-    plot_vertical_profiles,
     plot_multi_station_profiles,
     plot_ts_diagram,
     plot_scatter_density,
-    plot_mld_validation,
-    plot_3d_thermohaline_box,
-    plot_3d_isotherm_surface,
-    plot_vertical_section,
     plot_layer_metrics_profile,
     plot_depth_layers_grid
 )
@@ -78,24 +76,12 @@ def parse_args():
         help="Dataset subset partition to evaluate ('train', 'val', 'test', or 'all')"
     )
     parser.add_argument(
-        "--slice_lat", type=float, default=35.0,
-        help="Latitude in degrees North for zonal vertical transects (default: 35.0)"
-    )
-    parser.add_argument(
-        "--slice_lon", type=float, default=155.0,
-        help="Longitude in degrees East for meridional vertical transects (default: 155.0)"
-    )
-    parser.add_argument(
-        "--slice_depth", type=float, default=100.0,
-        help="Depth in meters for horizontal slice (default: 100.0m, main thermocline)"
-    )
-    parser.add_argument(
         "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu",
         help="Computing device (cuda or cpu)"
     )
     parser.add_argument(
         "--all", action="store_true", default=True,
-        help="Generate all 9 publication-grade figures (default: True)"
+        help="Generate all publication-grade figures (default: True)"
     )
     parser.add_argument(
         "--benchmark", action="store_true", default=False,
@@ -183,7 +169,6 @@ def run_visualization():
 
     all_scatter_true_t, all_scatter_pred_t = [], []
     all_scatter_true_s, all_scatter_pred_s = [], []
-    all_true_mld, all_pred_mld = [], []
 
     first_step_true_t = None
     first_step_pred_t = None
@@ -219,13 +204,6 @@ def run_visualization():
             all_scatter_true_s.append(true_s.flatten()[::8])
             all_scatter_pred_s.append(pred_s.flatten()[::8])
 
-            # Mixed Layer Depth (MLD)
-            D, H, W = true_t.shape
-            for h in range(0, H, 5):
-                for w in range(0, W, 5):
-                    all_true_mld.append(calc_mld(true_t[:, h, w], depths))
-                    all_pred_mld.append(calc_mld(pred_t[:, h, w], depths))
-
     all_full_preds_t = np.array(all_pred_t_list)  # (T, D, H, W)
     all_full_true_t = np.array(all_true_t_list)
     all_full_preds_s = np.array(all_pred_s_list)
@@ -235,8 +213,6 @@ def run_visualization():
     all_scatter_pred_t = np.concatenate(all_scatter_pred_t)
     all_scatter_true_s = np.concatenate(all_scatter_true_s)
     all_scatter_pred_s = np.concatenate(all_scatter_pred_s)
-    all_true_mld = np.array(all_true_mld)
-    all_pred_mld = np.array(all_pred_mld)
 
     # Compute layer metrics across full test partition
     print("\nComputing layer-by-layer evaluation metrics...")
@@ -245,106 +221,81 @@ def run_visualization():
 
     # 4. Generate Figures
     # -------------------------------------------------------------
-    # [Fig 1A & 1B] Layer-by-Layer Subsurface Evaluation (50m Interval)
+    # Create categorized subdirectories under pic/
+    dir_layers = os.path.join(out_dir, "01_spatial_layers")
+    dir_profiles = os.path.join(out_dir, "02_vertical_profiles")
+    dir_diagnostics = os.path.join(out_dir, "03_physical_diagnostics")
+    os.makedirs(dir_layers, exist_ok=True)
+    os.makedirs(dir_profiles, exist_ok=True)
+    os.makedirs(dir_diagnostics, exist_ok=True)
+
+    # [01_spatial_layers] Fig01 & Fig02: Subsurface Horizontal Slices (50m Interval)
     # -------------------------------------------------------------
-    layers_50m_dir = os.path.join(out_dir, "layers_50m")
-    print(f"\n[1/9] Generating Figure 1A: 50m Interval Depth Layers (Temperature)...")
+    print(f"\n[1/6] Generating Fig01: 50m Interval Depth Layers (Temperature)...")
     fig1a = plot_depth_layers_grid(
         first_step_true_t, first_step_pred_t, lons, lats, depths,
         target_depths=np.arange(0, 1050, 50),
         var_name="temperature",
-        save_path=os.path.join(out_dir, "fig1_depth_layers_50m_temp.png"),
-        export_individual_dir=layers_50m_dir
+        save_path=os.path.join(dir_layers, "Fig01_depth_layers_50m_temp.png")
     )
-    print(f"      --> Saved overview to {fig1a} and individual 50m layers to {layers_50m_dir}/")
+    print(f"      --> Saved to {fig1a}")
 
-    print(f"[2/9] Generating Figure 1B: 50m Interval Depth Layers (Salinity)...")
+    print(f"[2/6] Generating Fig02: 50m Interval Depth Layers (Salinity)...")
     fig1b = plot_depth_layers_grid(
         first_step_true_s, first_step_pred_s, lons, lats, depths,
         target_depths=np.arange(0, 1050, 50),
         var_name="salinity",
-        save_path=os.path.join(out_dir, "fig1_depth_layers_50m_sal.png"),
-        export_individual_dir=layers_50m_dir
+        save_path=os.path.join(dir_layers, "Fig02_depth_layers_50m_sal.png")
     )
-    print(f"      --> Saved overview to {fig1b} and individual 50m layers to {layers_50m_dir}/")
+    print(f"      --> Saved to {fig1b}")
 
     # -------------------------------------------------------------
-    # [Fig 2] Vertical Transect Section along Kuroshio Extension (35°N)
+    # [02_vertical_profiles] Fig03: Layer-by-Layer Subsurface Metric Profile Curves
     # -------------------------------------------------------------
-    print("[3/9] Generating Figure 2: Vertical Transect Section along Kuroshio Extension (35°N)...")
-    fig2 = plot_vertical_section(
-        first_step_true_t, first_step_pred_t, lons, lats, depths,
-        slice_type="lat", slice_val=args.slice_lat, var_name="temperature",
-        save_path=os.path.join(out_dir, "fig2_vertical_section_35n.png")
-    )
-    print(f"      --> Saved to {fig2}")
-
-    # -------------------------------------------------------------
-    # [Fig 3] Layer-by-Layer Subsurface Metric Profile Curves
-    # -------------------------------------------------------------
-    print("[4/9] Generating Figure 3: Layer-by-Layer Error & R^2 Curves (0-1000m)...")
+    print("[3/6] Generating Fig03: Layer-by-Layer Error & R^2 Curves (0-1000m)...")
     fig3 = plot_layer_metrics_profile(
         layer_metrics_t, layer_metrics_s, depths,
-        save_path=os.path.join(out_dir, "fig3_layer_metrics_depth.png")
+        save_path=os.path.join(dir_profiles, "Fig03_layer_metrics_depth.png")
     )
     print(f"      --> Saved to {fig3}")
 
     # -------------------------------------------------------------
-    # [Fig 4] Multi-Station Vertical Profiles (4 Regimes)
+    # [02_vertical_profiles] Fig04: Multi-Station Vertical Profiles (4 Regimes)
     # -------------------------------------------------------------
-    print("[5/9] Generating Figure 4: Multi-Station Vertical Profiles (4 Regimes Array)...")
+    print("[4/6] Generating Fig04: Multi-Station Vertical Profiles (4 Regimes Array)...")
     fig4 = plot_multi_station_profiles(
         first_step_true_t, first_step_pred_t,
         first_step_true_s, first_step_pred_s,
         depths, lons, lats,
-        save_path=os.path.join(out_dir, "fig4_multi_station_profiles.png")
+        save_path=os.path.join(dir_profiles, "Fig04_multi_station_profiles.png")
     )
     print(f"      --> Saved to {fig4}")
 
     # -------------------------------------------------------------
-    # [Fig 5] Thermohaline Physical Consistency (T-S Diagram)
+    # [03_physical_diagnostics] Fig05: Thermohaline Physical Consistency (T-S Diagram)
     # -------------------------------------------------------------
-    print("[6/9] Generating Figure 5: Temperature-Salinity (T-S) Physical Diagram...")
+    print("[5/6] Generating Fig05: Temperature-Salinity (T-S) Physical Diagram...")
     fig5 = plot_ts_diagram(
         all_scatter_true_t, all_scatter_pred_t, all_scatter_true_s, all_scatter_pred_s,
-        save_path=os.path.join(out_dir, "fig5_ts_diagram.png")
+        save_path=os.path.join(dir_diagnostics, "Fig05_ts_diagram.png")
     )
     print(f"      --> Saved to {fig5}")
 
     # -------------------------------------------------------------
-    # [Fig 6] Full-Depth Scatter Density with R^2
+    # [03_physical_diagnostics] Fig06: Full-Depth Scatter Density with R^2
     # -------------------------------------------------------------
-    print("[7/9] Generating Figure 6: Full-Depth Scatter Density Validation...")
+    print("[6/6] Generating Fig06: Full-Depth Scatter Density Validation...")
     fig6 = plot_scatter_density(
         all_scatter_true_t, all_scatter_pred_t, all_scatter_true_s, all_scatter_pred_s,
-        save_path=os.path.join(out_dir, "fig6_scatter_density.png")
+        save_path=os.path.join(dir_diagnostics, "Fig06_scatter_density.png")
     )
     print(f"      --> Saved to {fig6}")
 
-    # -------------------------------------------------------------
-    # [Fig 7] Mixed Layer Depth (MLD) Validation
-    # -------------------------------------------------------------
-    print("[8/9] Generating Figure 7: Mixed Layer Depth (MLD) Scatter Validation...")
-    fig7 = plot_mld_validation(
-        all_true_mld, all_pred_mld,
-        save_path=os.path.join(out_dir, "fig7_mld_validation.png")
-    )
-    print(f"      --> Saved to {fig7}")
-
-    # -------------------------------------------------------------
-    # [Fig 8] 3D Isothermal Surface Topography (15°C Thermocline)
-    # -------------------------------------------------------------
-    print("[9/9] Generating Figure 8: 3D Isothermal Surface Topography (15°C Thermocline)...")
-    fig8 = plot_3d_isotherm_surface(
-        first_step_true_t, first_step_pred_t, lons, lats, depths,
-        target_temp=15.0,
-        save_path=os.path.join(out_dir, "fig8_3d_isotherm_15c.png")
-    )
-    print(f"      --> Saved to {fig8}")
-
     print("\n" + "=" * 75)
-    print(f" [SUCCESS] All 9 high-resolution 2D/3D scientific figures exported to:")
-    print(f"           {os.path.abspath(out_dir)}/")
+    print(f" [SUCCESS] All 6 scientific figures categorized and exported to:")
+    print(f"           - {os.path.abspath(dir_layers)}/ (Fig01, Fig02)")
+    print(f"           - {os.path.abspath(dir_profiles)}/ (Fig03, Fig04)")
+    print(f"           - {os.path.abspath(dir_diagnostics)}/ (Fig05, Fig06)")
     print("=" * 75)
 
     if args.benchmark:

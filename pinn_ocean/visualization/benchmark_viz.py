@@ -42,11 +42,12 @@ def plot_superiority_radar(
     categories = [
         "温度拟合精度\n(Temp Fidelity)",
         "盐度跃层拟合\n(Sal Fidelity)",
-        "空间解释度\n(R² Score)",
+        "空间解释度\n($R^2$ Score)",
         "层结防倒置率\n(Stability 1-CIR)",
         "深水单调合规\n(Monotonicity 1-TMV)",
         "混合层界面\n(MLD Accuracy)"
     ]
+
     N = len(categories)
     angles = [n / float(N) * 2 * math.pi for n in range(N)]
     angles += angles[:1]  # Complete loop
@@ -57,7 +58,6 @@ def plot_superiority_radar(
 
     # Color and styling palette
     model_styles = {
-        "Trilinear (三维空间插值)": {"color": "#64748B", "linestyle": "--", "alpha": 0.10, "marker": "o", "linewidth": 1.5},
         "Pure-CNN (无物理卷积网络)": {"color": "#F59E0B", "linestyle": "-.", "alpha": 0.15, "marker": "s", "linewidth": 2.0},
         "Pure-Swin (无物理消融对照)": {"color": "#3B82F6", "linestyle": ":", "alpha": 0.20, "marker": "^", "linewidth": 2.2},
         "Swin-Ocean-PINN (本项目模型)": {"color": "#DC2626", "linestyle": "-", "alpha": 0.35, "marker": "D", "linewidth": 3.0}
@@ -141,7 +141,7 @@ def plot_physics_stability_transect(
     if np.any(unstable_true):
         z_mid = 0.5 * (depths[:-1] + depths[1:])
         pts_z, pts_x = np.where(unstable_true)
-        ax0.scatter(lons[pts_x], z_mid[pts_z], color='#EF4444', s=8, alpha=0.8, marker='x', label='对流失稳 N²<0')
+        ax0.scatter(lons[pts_x], z_mid[pts_z], color='#EF4444', s=8, alpha=0.8, marker='x', label='对流失稳 $N^2<0$')
 
     cbar = fig.colorbar(c0, ax=ax0, orientation='vertical', fraction=0.02, pad=0.02)
     cbar.set_label("位温 (°C)", fontsize=9)
@@ -164,8 +164,9 @@ def plot_physics_stability_transect(
 
         instability_rate = float(np.sum(unstable) / max(unstable.size, 1) * 100.0)
 
-        scatter_lbl = f"失稳区域 N²<0 (失稳率: {instability_rate:.2f}%)"
+        scatter_lbl = f"失稳区域 $N^2<0$ (失稳率: {instability_rate:.2f}%)"
         ax.scatter(lons[pts_x], z_mid[pts_z], color='#DC2626', s=10, alpha=0.85, marker='x', label=scatter_lbl)
+
 
         lbl = labels[idx] if idx < len(labels) else f"({chr(ord('b')+idx)})"
         ax.set_title(f"{lbl} {m_name} | 对流失稳率 CIR: {instability_rate:.2f}%", fontsize=11, fontweight='bold', loc='left')
@@ -280,13 +281,17 @@ def plot_superiority_bar_summary(
     ]
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 9), dpi=300)
-    fig.patch.set_facecolor('#FFFFFF')
-    colors = ['#94A3B8', '#F59E0B', '#3B82F6', '#DC2626']
+    model_color_map = {
+        "Pure-CNN (无物理卷积网络)": "#F59E0B",
+        "Pure-Swin (无物理消融对照)": "#3B82F6",
+        "Swin-Ocean-PINN (本项目模型)": "#DC2626"
+    }
+    bar_colors = [model_color_map.get(m, '#94A3B8') for m in models]
 
     for idx, (metric_key, metric_label, direction) in enumerate(metrics):
         ax = axes[idx // 2, idx % 2]
         vals = [benchmark_data[m].get(metric_key, 0.0) for m in models]
-        bars = ax.bar(models, vals, color=colors[:n_models], width=0.55, edgecolor='#334155', linewidth=0.8)
+        bars = ax.bar(models, vals, color=bar_colors, width=0.55, edgecolor='#334155', linewidth=0.8)
 
         # Highlight best
         best_val = min(vals) if direction == "lower_is_better" else max(vals)

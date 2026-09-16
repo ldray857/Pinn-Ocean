@@ -213,13 +213,13 @@ def run_unit_tests():
 
     # Test visualization module imports including benchmark visualizations
     from pinn_ocean.visualization import (
-        plot_3d_thermohaline_box, plot_3d_isotherm_surface,
-        plot_vertical_section, plot_layer_metrics_profile,
+        plot_3d_thermohaline_box,
+        plot_layer_metrics_profile,
         plot_multi_station_profiles, plot_superiority_radar,
         plot_physics_stability_transect, plot_glorys_super_resolution_comparison,
         plot_superiority_bar_summary
     )
-    print("      --> All 3D volumetric, transect, super-resolution, and benchmark modules imported successfully.")
+    print("      --> All visualization, super-resolution, and benchmark modules imported successfully.")
 
     print("\n==================================================================")
     print(" [PASSED] All Pinn-Ocean core components, super-res & benchmark verified! ")
