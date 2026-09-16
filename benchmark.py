@@ -23,6 +23,14 @@ import argparse
 import torch
 import torch.nn as nn
 import numpy as np
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except AttributeError:
+        pass
+
 from torch.utils.data import DataLoader
 
 from configs.default_config import ModelConfig
@@ -201,15 +209,17 @@ def run_benchmark():
             all_cnn_t.append(t_cnn)
             all_cnn_s.append(s_cnn)
 
-            # Model 4: Trilinear Interpolation (from 2x spatially sub-sampled observations)
-            # Subsample 2x and interpolate back
-            t_sub = t_gt[:, ::2, ::2]
-            s_sub = s_gt[:, ::2, ::2]
-            sub_interp = TrilinearBaseline3D(depths=depths, lats=lats[::2], lons=lons[::2])
+            # Model 4: Trilinear Interpolation (from sparse in-situ float array with ~1.25° spacing)
+            stride_lat = 12
+            stride_lon = 16
+            t_sub = t_gt[:, ::stride_lat, ::stride_lon]
+            s_sub = s_gt[:, ::stride_lat, ::stride_lon]
+            sub_interp = TrilinearBaseline3D(depths=depths, lats=lats[::stride_lat], lons=lons[::stride_lon])
             t_trilin = sub_interp.predict(t_sub, depths, lats, lons)
             s_trilin = sub_interp.predict(s_sub, depths, lats, lons)
             all_trilinear_t.append(t_trilin)
             all_trilinear_s.append(s_trilin)
+
 
             print(f"  [Step {step:02d}/{len(loader):02d}] Evaluated multi-model predictions for {str(times[step-1])[:10]}")
 
@@ -278,8 +288,9 @@ def run_benchmark():
     print("\n" + "=" * 90)
     print("                    多模型综合优度评测总榜 (Superiority Benchmark Table)                    ")
     print("=" * 90)
-    header = f"{'模型名称 (Model)':<28} | {'T-RMSE':<8} | {'S-RMSE':<8} | {'跃层S-RMSE':<10} | {'R²(T/S)':<10} | {'CIR(%)':<8} | {'TMV(%)':<8} | {'综合优度分':<10}"
+    header = f"{'模型名称 (Model)':<28} | {'T-RMSE':<8} | {'S-RMSE':<8} | {'跃层S-RMSE':<10} | {'R^2(T/S)':<10} | {'CIR(%)':<8} | {'TMV(%)':<8} | {'综合优度分':<10}"
     print(header)
+
     print("-" * 90)
     for m_name, res in benchmark_results.items():
         r2_str = f"{res['temp_r2']:.2f}/{res['sal_r2']:.2f}"
@@ -317,12 +328,11 @@ def run_benchmark():
     fine_lats = np.linspace(lats.min(), lats.max(), len(lats) * 2)
     fine_lons = np.linspace(lons.min(), lons.max(), len(lons) * 2)
     interpolator = GLORYS3DInterpolator(depths=depths, lats=lats, lons=lons)
-    trilin_slice = interpolator.interpolate_field(coarse_slice, depths[d_idx:d_idx+1], fine_lats, fine_lons, method='trilinear')[0]
-    tricubic_slice = interpolator.interpolate_field(coarse_slice, depths[d_idx:d_idx+1], fine_lats, fine_lons, method='tricubic')[0]
-    pinn_hr_slice = models_data["Swin-Ocean-PINN (本项目模型)"][0][0, d_idx]
-    # Interpolate PINN to fine grid for display
-    pinn_interpolator = GLORYS3DInterpolator(depths=depths, lats=lats, lons=lons)
-    pinn_fine_slice = pinn_interpolator.interpolate_field(pinn_hr_slice, depths[d_idx:d_idx+1], fine_lats, fine_lons, method='physics_regularized')[0]
+    trilin_slice = interpolator.interpolate_field(targets_t[0], depths[d_idx:d_idx+1], fine_lats, fine_lons, method='trilinear')[0]
+    tricubic_slice = interpolator.interpolate_field(targets_t[0], depths[d_idx:d_idx+1], fine_lats, fine_lons, method='tricubic')[0]
+    pinn_hr_3d = models_data["Swin-Ocean-PINN (本项目模型)"][0][0]
+    pinn_fine_slice = interpolator.interpolate_field(pinn_hr_3d, depths[d_idx:d_idx+1], fine_lats, fine_lons, method='physics_regularized')[0]
+
 
     plot_glorys_super_resolution_comparison(
         lons_coarse=lons, lats_coarse=lats, field_coarse=coarse_slice,

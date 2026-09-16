@@ -153,6 +153,25 @@ class GLORYS3DInterpolator:
         """
         scipy_method = 'linear' if method in ['trilinear', 'physics_regularized'] else 'cubic'
         
+        # Handle 2D slice (H, W) interpolation gracefully
+        if field_3d.ndim == 2:
+            rgi = RegularGridInterpolator(
+                (self.lats, self.lons),
+                field_3d,
+                method=scipy_method,
+                bounds_error=False,
+                fill_value=None
+            )
+            mesh_y, mesh_x = np.meshgrid(target_lats, target_lons, indexing='ij')
+            pts = np.stack([mesh_y.ravel(), mesh_x.ravel()], axis=-1)
+            result_2d = rgi(pts).reshape(len(target_lats), len(target_lons))
+            if method == 'physics_regularized':
+                if var_name.lower() in ['temp', 'thetao', 'temperature']:
+                    result_2d = np.clip(result_2d, -2.0, 35.0)
+                elif var_name.lower() in ['sal', 'so', 'salinity']:
+                    result_2d = np.clip(result_2d, 30.0, 38.0)
+            return result_2d.astype(np.float32)
+
         rgi = RegularGridInterpolator(
             (self.depths, self.lats, self.lons),
             field_3d,
@@ -172,6 +191,7 @@ class GLORYS3DInterpolator:
 
         if method == 'physics_regularized':
             result = self._apply_physics_regularization(result, target_depths, var_name)
+
 
         return result.astype(np.float32)
 
