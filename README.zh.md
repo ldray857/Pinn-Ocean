@@ -289,6 +289,7 @@ Pinn-Ocean/
 │       │   └── 04_superiority_benchmark/ # Fig07 ~ Fig10: 多模型学术优度与超分评测
 │       └── con/               # 3D 立体反演 NetCDF 与 ArcGIS Pro 10m 体素数据
 ├── download_data.py           # CMEMS 开阔太平洋多源遥感与 3D 再分析数据自动化下载脚本
+├── download_argo.py           # 基于 argopy 的真实 Argo 浮标实测数据自动化下载与质控导出脚本
 ├── train.py                   # 完整模型训练主入口 (支持多卡加速与主动物理约束)
 ├── evaluate.py                # 检查点评估与全深度物理指标验证脚本 (四阶评判体系)
 ├── predict.py                 # 全域三维立体反演与双格式 CF-1.8 NetCDF4 资产导出脚本
@@ -429,6 +430,22 @@ python benchmark.py --years 2015 2016 2017 2018 2019 2020 --mode test
 * **`Fig09_glorys_super_resolution.png`**：GLORYS 插值高分超分辨力局部放大细节对比图；
 * **`Fig10_superiority_bar_summary.png`**：关键指标误差缩减与消融提升柱状图；
 * **学术评测报告**：自动输出 `result/<year_tag>/log/benchmark_summary.json` 与 `benchmark_report.md`。
+
+### 6.9 Argo 真实浮标原位数据获取与独立验证 (In-Situ Argo Validation)
+为满足学术答辩中专家关注的“独立第三方原位实测观测验证”，项目支持通过 `argopy` 自动化抓取目标海域（145°E–165°E, 30°N–40°N, 0–1000m）的真实全球 Argo 剖面浮标观测数据：
+
+```bash
+# 安装 argopy 依赖 (如未安装)
+pip install argopy
+
+# 一键下载 2020 年西北太平洋目标区域全部 Argo 浮标剖面数据并保存至 data/argo/2020/
+python download_argo.py --year 2020 --output_dir data/argo
+```
+* **产出数据资产**（自动保存于 `data/argo/2020/`）：
+  * **`argo_pacific_2020.nc`**：符合 CF-1.8 规范的 2020 年全量 Argo 温盐质控实测 NetCDF4 数据集；
+  * **`argo_profiles_summary.csv`**：浮标 WMO 编号、周期、经纬度、水深覆盖与采样层数元数据清单；
+  * **`argo_profiles_summary.json`**：空间极值与观测统计摘要；
+  * **`argo_spatial_distribution.png`**：研究区域浮标实测站位与漂移轨迹可视化底图（可直接贴入答辩 PPT 展示）。
 
 ---
 

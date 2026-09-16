@@ -286,6 +286,7 @@ Pinn-Ocean/
 │       │   └── 04_superiority_benchmark/ # Fig07 ~ Fig10: Superiority radar, transect stability & super-res
 │       └── con/               # 3-D volumetric NetCDF & ArcGIS Pro 10m regular voxel layers
 ├── download_data.py           # Automated data collection tool for Open Pacific CMEMS datasets
+├── download_argo.py           # In-situ Argo float profile data acquisition tool via argopy
 ├── train.py                   # Model training entry point (multi-year support & active physics)
 ├── evaluate.py                # Model evaluation and 4-tier physics/layer validation engine
 ├── predict.py                 # Full 3-D volumetric inference & dual CF-compliant NetCDF exporter
@@ -426,6 +427,22 @@ python benchmark.py --years 2015 2016 2017 2018 2019 2020 --mode test
 * **`Fig09_glorys_super_resolution.png`**: High-resolution super-resolution comparison with mesoscale eddy inset zoom;
 * **`Fig10_superiority_bar_summary.png`**: Key metric error reduction & ablation improvement bar summary;
 * **Reports**: `result/<year_tag>/log/benchmark_summary.json` and `benchmark_report.md`.
+
+### 6.9 In-Situ Argo Float Observation Acquisition (Independent Ground Truth)
+To support independent third-party physical validation (a key asset in academic defenses), the framework integrates `argopy` to retrieve physical profiling float casts across the Northwest Pacific domain (145°E–165°E, 30°N–40°N, 0–1000m):
+
+```bash
+# Install argopy dependency (if not installed)
+pip install argopy
+
+# Download all 2020 Argo float profiles across the target study region into data/argo/2020/
+python download_argo.py --year 2020 --output_dir data/argo
+```
+* **Output Artifacts** (saved in `data/argo/2020/`):
+  * **`argo_pacific_2020.nc`**: CF-compliant NetCDF4 dataset containing quality-controlled (QC=1,2) in-situ temperature and salinity profiles;
+  * **`argo_profiles_summary.csv`**: Tabular catalog with WMO platform IDs, cycle counts, timestamps, coordinates, and depth ranges;
+  * **`argo_profiles_summary.json`**: Aggregated statistical metrics and spatial bounding bounds;
+  * **`argo_spatial_distribution.png`**: Visual station distribution and float drift trajectory map across the study region.
 
 ---
 
