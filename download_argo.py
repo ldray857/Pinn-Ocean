@@ -108,7 +108,10 @@ def plot_argo_stations_map(df_summary: pd.DataFrame, bbox: list, year: int, save
     if not df_summary.empty:
         # Group by platform to show float trajectories
         platforms = df_summary['platform_number'].unique()
-        cmap = plt.cm.get_cmap('tab20', max(len(platforms), 1))
+        try:
+            cmap = plt.colormaps['tab20']
+        except (AttributeError, KeyError):
+            cmap = plt.cm.get_cmap('tab20')
 
         for idx, p_num in enumerate(platforms):
             sub = df_summary[df_summary['platform_number'] == p_num].sort_values('time')
@@ -172,7 +175,7 @@ def download_argo_data():
     print("=" * 75)
 
     # Set argopy global options
-    argopy.set_options(src=args.src, mode="standard", user_level="standard")
+    argopy.set_options(src=args.src, mode="standard")
 
     monthly_datasets = []
     
@@ -193,10 +196,10 @@ def download_argo_data():
             try:
                 fetcher = ArgoDataFetcher(src=args.src).region(box)
                 ds_m = fetcher.to_xarray()
-                if ds_m and ds_m.sizes.get("N_POINTS", 0) > 0:
+                if ds_m is not None and ds_m.sizes.get("N_POINTS", 0) > 0:
                     if args.qc_filter:
                         try:
-                            ds_m = ds_m.argo.filter_qc(qc=[1, 2])
+                            ds_m = ds_m.argo.filter_qc()
                         except Exception as qc_err:
                             pass
                     monthly_datasets.append(ds_m)
@@ -216,9 +219,12 @@ def download_argo_data():
         try:
             fetcher = ArgoDataFetcher(src=args.src).region(box)
             ds_full = fetcher.to_xarray()
-            if args.qc_filter and ds_full:
-                ds_full = ds_full.argo.filter_qc(qc=[1, 2])
-            if ds_full and ds_full.sizes.get("N_POINTS", 0) > 0:
+            if args.qc_filter and ds_full is not None:
+                try:
+                    ds_full = ds_full.argo.filter_qc()
+                except Exception:
+                    pass
+            if ds_full is not None and ds_full.sizes.get("N_POINTS", 0) > 0:
                 monthly_datasets.append(ds_full)
         except Exception as e:
             print(f"[Error] Failed to fetch full year {args.year}: {e}", file=sys.stderr)
