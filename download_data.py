@@ -34,9 +34,9 @@ DEFAULT_MAX_LON = 165.0
 DEFAULT_MIN_LAT = 30.0
 DEFAULT_MAX_LAT = 40.0
 
-# 9-Year Time Window: 2013-01-01 to 2021-12-31
-DEFAULT_START_TIME = "2013-01-01"
-DEFAULT_END_TIME = "2021-12-31"
+# 9-Year Time Window: 2012-01-01 to 2020-12-31 (108 months)
+DEFAULT_START_TIME = "2012-01-01"
+DEFAULT_END_TIME = "2020-12-31"
 
 # Depth range for subsurface thermohaline fields (meters)
 # (GLORYS surface begins at 0.494m; using 0.49 avoids boundary warnings)

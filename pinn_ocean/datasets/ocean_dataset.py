@@ -132,7 +132,7 @@ class OceanContinuousDataset(Dataset):
         1: Practical Salinity (0-1000m)
     """
     def __init__(self, sla_path, gt_path, sst_path=None, sss_path=None, wind_path=None,
-                 years=None, mode='train', train_ratio=0.75, val_ratio=0.15):
+                 years=None, mode='train', train_ratio=84.0 / 108.0, val_ratio=12.0 / 108.0):
         super().__init__()
         self.mode = mode
         

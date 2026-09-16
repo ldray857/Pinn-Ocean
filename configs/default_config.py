@@ -80,13 +80,13 @@ class DataConfig:
     max_lon: float = 165.0
     min_lat: float = 30.0
     max_lat: float = 40.0
-    start_time: str = "2013-01-01"
-    end_time: str = "2021-12-31"
+    start_time: str = "2012-01-01"
+    end_time: str = "2020-12-31"
     
-    # Temporal train/val/test split ratios (72 months train, 24 months val, 12 months test)
-    train_ratio: float = 72.0 / 108.0   # ~0.667
-    val_ratio: float = 24.0 / 108.0     # ~0.222
-    test_ratio: float = 12.0 / 108.0    # ~0.111
+    # Temporal train/val/test split ratios (Plan A: 84m train 2012-2018, 12m val 2019, 12m test 2020)
+    train_ratio: float = 84.0 / 108.0   # ~0.778 (2012-01 to 2018-12)
+    val_ratio: float = 12.0 / 108.0     # ~0.111 (2019-01 to 2019-12)
+    test_ratio: float = 12.0 / 108.0    # ~0.111 (2020-01 to 2020-12)
 
 
 
