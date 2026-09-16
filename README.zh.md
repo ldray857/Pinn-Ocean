@@ -399,7 +399,35 @@ python visualize.py --mode test --years 2015 2016 2017 2018 2019 2020 --all
 * **`fig7_mld_validation.png`**：上混合层深度 (MLD) 物理界面反演验证散点图；
 * **`fig8_3d_isotherm_15c.png`**：15°C 特征温跃层等温面三维拓扑起伏曲面图，立体呈现大洋锋面动力倾斜。
 
+### 6.7 GLORYS 三维空间-垂向连续插值高分超分辨率 (Super-Resolution)
+基于连续傅里叶深度嵌入与亚像素空间神经算子，支持对 GLORYS 场进行任意空间倍率（如 2x、4x）的水平连续降尺度超分，以及垂直任意深度（如 10m、5m 等距规则体素）的高密连续插值：
+
+```bash
+# 启动 GLORYS 2x 水平超分辨率 (1/12° -> 1/24°) 与 10m 规则体素插值重构
+python super_resolve.py --years 2015 2016 2017 2018 2019 2020 --mode test --scale_factor 2.0 --depth_step 10.0 --method pinn
+
+# 或直接在 predict.py 中启用超分辨率联合导出
+python predict.py --mode test --years 2015 2016 2017 2018 2019 2020 --super_res_scale 2.0
+```
+* **输出资产**：自动保存至 `result/<year_tag>/con/pacific_glorys_super_res_3d_pinn_test.nc`，原生无缝兼容 ArcGIS Pro 3.x 体素图层渲染。
+
+### 6.8 多模型综合学术优度评测体系与对比图件 (Superiority Benchmark)
+构建了涵盖“经典地球物理三维插值（Trilinear）”、“传统无物理深度学习（Pure-CNN）”、“无物理自注意力消融（Pure-Swin）”与“全配置物理网络（Swin-Ocean-PINN）”的四模型综合评测体系，一键生成结构化评测报告与 4 组学术出版级对比图件：
+
+```bash
+# 启动多模型综合优度评测并生成全套对比图
+python benchmark.py --years 2015 2016 2017 2018 2019 2020 --mode test
+```
+
+**生成的 4 组核心优度评测图件**（保存于 `result/<year_tag>/pic/`）：
+* **`fig_superiority_radar.png`**：多模型全维度学术优度六维雷达对比图；
+* **`fig_physics_stability_transect.png`**：35°N 黑潮延伸体垂直断面失稳斑块（$N^2 < 0$）多模型横向对比图；
+* **`fig_glorys_super_resolution_comparison.png`**：GLORYS 插值高分超分辨力局部放大细节对比图；
+* **`fig_superiority_bar_summary.png`**：关键指标误差缩减与消融提升柱状图；
+* **学术评测报告**：自动输出 `result/<year_tag>/log/benchmark_summary.json` 与 `benchmark_report.md`。
+
 ---
+
 
 ## 七、 参考文献与致谢
 

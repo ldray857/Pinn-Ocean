@@ -550,3 +550,93 @@ def calc_multilevel_density_inversion_rate(temp, sal, depths, split_depth=500.0,
         "total_evaluated": total_evaluated
     }
 
+
+def calc_psnr(preds, targets, data_range=None):
+    """
+    Computes Peak Signal-to-Noise Ratio (PSNR) in decibels (dB).
+    Higher is better.
+    """
+    if isinstance(preds, torch.Tensor):
+        preds = preds.detach().cpu().numpy()
+    if isinstance(targets, torch.Tensor):
+        targets = targets.detach().cpu().numpy()
+
+    mse = float(np.mean((preds - targets) ** 2))
+    if mse == 0.0:
+        return 100.0
+
+    if data_range is None:
+        data_range = float(np.max(targets) - np.min(targets))
+        if data_range < 1e-4:
+            data_range = 1.0
+
+    psnr = 10.0 * np.log10((data_range ** 2) / mse)
+    return float(psnr)
+
+
+def calc_gradient_fidelity(preds, targets):
+    """
+    Computes spatial gradient magnitude correlation and gradient RMSE.
+    Evaluates preservation of frontal shear and mesoscale eddy edges.
+    """
+    if isinstance(preds, torch.Tensor):
+        preds = preds.detach().cpu().numpy()
+    if isinstance(targets, torch.Tensor):
+        targets = targets.detach().cpu().numpy()
+
+    gy_t, gx_t = np.gradient(targets, axis=(-2, -1))
+    gy_p, gx_p = np.gradient(preds, axis=(-2, -1))
+
+    mag_t = np.sqrt(gx_t**2 + gy_t**2)
+    mag_p = np.sqrt(gx_p**2 + gy_p**2)
+
+    grad_rmse = float(np.sqrt(np.mean((mag_p - mag_t) ** 2)))
+    corr = np.corrcoef(mag_t.ravel(), mag_p.ravel())[0, 1]
+    grad_corr = float(corr) if not np.isnan(corr) else 1.0
+
+    return {
+        "grad_rmse": grad_rmse,
+        "grad_correlation": grad_corr
+    }
+
+
+def calc_model_superiority_index(rmse_t, rmse_s, r2_t, r2_s, cir_percent, tmv_percent, mld_mae):
+    """
+    Computes a normalized composite Superiority Score (0-100) combining
+    statistical accuracy, physical compliance, and boundary fidelity.
+    
+    Higher score indicates greater superiority.
+    """
+    # Normalized components (bounded [0, 1])
+    # Temperature accuracy score: 1.0 at RMSE=0, drops at higher RMSE
+    s_t = max(0.0, 1.0 - (rmse_t / 3.0))
+    # Salinity accuracy score
+    s_s = max(0.0, 1.0 - (rmse_s / 0.3))
+    # Correlation score
+    s_r2 = max(0.0, (max(0.0, r2_t) + max(0.0, r2_s)) / 2.0)
+    # Convective stability score: 1.0 at 0% instability, 0 at >=15%
+    s_stab = max(0.0, 1.0 - (cir_percent / 15.0))
+    # Deep thermal monotonicity score: 1.0 at 0% violation, 0 at >=5%
+    s_mono = max(0.0, 1.0 - (tmv_percent / 5.0))
+    # MLD boundary score: 1.0 at 0m MAE, 0 at >=50m
+    s_mld = max(0.0, 1.0 - (mld_mae / 50.0))
+
+    composite_score = (
+        0.20 * s_t +
+        0.20 * s_s +
+        0.15 * s_r2 +
+        0.20 * s_stab +
+        0.15 * s_mono +
+        0.10 * s_mld
+    ) * 100.0
+
+    return {
+        "composite_score": float(composite_score),
+        "score_t": float(s_t * 100.0),
+        "score_s": float(s_s * 100.0),
+        "score_r2": float(s_r2 * 100.0),
+        "score_stratification": float(s_stab * 100.0),
+        "score_monotonicity": float(s_mono * 100.0),
+        "score_mld": float(s_mld * 100.0)
+    }
+

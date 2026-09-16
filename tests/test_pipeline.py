@@ -172,17 +172,59 @@ def run_unit_tests():
     assert "mld_rmse" in mld_info and "mld_mae" in mld_info
     print(f"      MLD RMSE: {mld_info['mld_rmse']:.2f} m | MAE: {mld_info['mld_mae']:.2f} m")
 
-    # Test visualization module imports
+    # 7. Test Continuous Space-Depth Super-Resolution & GLORYS 3D Interpolation
+    print("\n[8/9] Testing Continuous Super-Resolution & GLORYS Interpolation...")
+    from pinn_ocean.models.super_resolution import (
+        ContinuousSpaceDepthSuperResolver,
+        GLORYS3DInterpolator,
+        compute_super_resolution_metrics
+    )
+    resolver = ContinuousSpaceDepthSuperResolver(model=model, device=device)
+    # Test 2x spatial upsampling
+    x_hr_test = resolver.super_resolve_surface_input(x_8ch, scale_factor=2.0)
+    assert x_hr_test.shape == (B, 8, H * 2, W * 2), "Super-resolved surface shape mismatch"
+    print(f"      Super-resolved Surface Tensor: {tuple(x_hr_test.shape)} (2x magnification)")
+
+    # Test GLORYS 3D Interpolator
+    synth_lats = np.linspace(30.0, 40.0, 10)
+    synth_lons = np.linspace(145.0, 165.0, 15)
+    interpolator = GLORYS3DInterpolator(depths=synth_depths, lats=synth_lats, lons=synth_lons)
+    synth_field = np.random.randn(D, 10, 15).astype(np.float32)
+    tgt_lats = np.linspace(30.0, 40.0, 20)
+    tgt_lons = np.linspace(145.0, 165.0, 30)
+    interp_field = interpolator.interpolate_field(synth_field, synth_depths, tgt_lats, tgt_lons, method='physics_regularized')
+    assert interp_field.shape == (D, 20, 30), "GLORYS 3D interpolation shape mismatch"
+    print(f"      GLORYS 3D Physics-Regularized Interpolation: {tuple(interp_field.shape)}")
+
+    # 8. Test Baselines & Benchmark Metrics
+    print("\n[9/9] Testing Baselines & Superiority Benchmark Metrics...")
+    from pinn_ocean.models.baselines import TrilinearBaseline3D, PureDataCNN3D, PureSwinAblation
+    from pinn_ocean.utils.metrics import calc_model_superiority_index, calc_psnr
+    cnn_model = PureDataCNN3D(in_channels=8, hidden_dim=32).to(device)
+    out_cnn = cnn_model(x_8ch, z_raw)
+    assert out_cnn.shape == (B, 2, D, H, W), "PureDataCNN forward pass mismatch"
+
+    sup_score = calc_model_superiority_index(
+        rmse_t=1.54, rmse_s=0.10, r2_t=0.95, r2_s=0.88,
+        cir_percent=1.10, tmv_percent=0.01, mld_mae=19.2
+    )
+    assert "composite_score" in sup_score
+    print(f"      Composite Superiority Index Score: {sup_score['composite_score']:.2f}/100")
+
+    # Test visualization module imports including benchmark visualizations
     from pinn_ocean.visualization import (
         plot_3d_thermohaline_box, plot_3d_isotherm_surface,
         plot_vertical_section, plot_layer_metrics_profile,
-        plot_multi_station_profiles
+        plot_multi_station_profiles, plot_superiority_radar,
+        plot_physics_stability_transect, plot_glorys_super_resolution_comparison,
+        plot_superiority_bar_summary
     )
-    print("      --> All 3D volumetric, transect, and multi-station modules imported successfully.")
+    print("      --> All 3D volumetric, transect, super-resolution, and benchmark modules imported successfully.")
 
     print("\n==================================================================")
-    print(" [PASSED] All Pinn-Ocean core components & new metrics verified!  ")
+    print(" [PASSED] All Pinn-Ocean core components, super-res & benchmark verified! ")
     print("==================================================================")
+
 
 
 if __name__ == "__main__":

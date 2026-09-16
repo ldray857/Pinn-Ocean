@@ -17,8 +17,10 @@ from torch.utils.data import DataLoader
 
 from configs.default_config import ModelConfig
 from pinn_ocean.models.swin_ocean_pinn import SwinOceanPINN
+from pinn_ocean.models.super_resolution import ContinuousSpaceDepthSuperResolver
 from pinn_ocean.datasets.ocean_dataset import OceanContinuousDataset
 from pinn_ocean.utils import get_result_dirs
+
 
 
 def parse_args():
@@ -62,7 +64,12 @@ def parse_args():
         help="Custom output file path for regular NetCDF (default: auto-appends '_regular.nc')"
     )
     parser.add_argument(
+        "--super_res_scale", type=float, default=1.0,
+        help="Horizontal super-resolution factor (default: 1.0; set to 2.0 or 4.0 for GLORYS spatial super-resolution)"
+    )
+    parser.add_argument(
         "--years", nargs="+", type=int, default=None,
+
         help="Optional specific years to include (e.g. --years 2017 2018 2019 2020)"
     )
     parser.add_argument(
@@ -366,7 +373,67 @@ def predict_and_export():
         print(f"    Temperature Range: {float(all_pred_thetao_reg.min()):.2f}°C ~ {float(all_pred_thetao_reg.max()):.2f}°C")
         print(f"    Salinity Range   : {float(all_pred_so_reg.min()):.2f} PSU ~ {float(all_pred_so_reg.max()):.2f} PSU")
 
+    # 7. Optional Horizontal Super-Resolution NetCDF Export
+    if args.super_res_scale > 1.0:
+        sr_file = output_file[:-3] + f"_sr_{args.super_res_scale:.0f}x.nc" if output_file.endswith(".nc") else output_file + f"_sr_{args.super_res_scale:.0f}x.nc"
+        print(f"\nPerforming continuous spatial super-resolution ({args.super_res_scale}x horizontal downscaling)...")
+        resolver = ContinuousSpaceDepthSuperResolver(model=model, stats=stats, device=device)
+        H_sr = int(round(len(latitudes) * args.super_res_scale))
+        W_sr = int(round(len(longitudes) * args.super_res_scale))
+        sr_lats = np.linspace(latitudes.min(), latitudes.max(), H_sr, dtype=np.float32)
+        sr_lons = np.linspace(longitudes.min(), longitudes.max(), W_sr, dtype=np.float32)
+        target_z = z_reg if z_reg is not None else z_raw
+
+        all_pred_t_sr, all_pred_s_sr = [], []
+        with torch.no_grad():
+            for x_8ch, _ in data_loader:
+                t_sr, s_sr = resolver.reconstruct_3d_high_res(
+                    x_8ch=x_8ch, z_coords=target_z, scale_factor=args.super_res_scale,
+                    target_hw=(H_sr, W_sr), unnormalize=True
+                )
+                all_pred_t_sr.append(t_sr[0])
+                all_pred_s_sr.append(s_sr[0])
+
+        all_pred_t_sr = np.stack(all_pred_t_sr, axis=0)
+        all_pred_s_sr = np.stack(all_pred_s_sr, axis=0)
+        out_depths_sr = z_reg_vals if z_reg_vals is not None else depths
+
+        sr_ds = xr.Dataset(
+            data_vars={
+                "super_res_thetao": (
+                    ("time", "depth", "latitude", "longitude"), all_pred_t_sr,
+                    {"long_name": "Super-Resolved Potential Temperature (Swin-Ocean-PINN)", "units": "degrees_C"}
+                ),
+                "super_res_so": (
+                    ("time", "depth", "latitude", "longitude"), all_pred_s_sr,
+                    {"long_name": "Super-Resolved Practical Salinity (Swin-Ocean-PINN)", "units": "psu"}
+                )
+            },
+            coords={
+                "time": ("time", times, {"standard_name": "time", "axis": "T"}),
+                "depth": ("depth", out_depths_sr, {"units": "m", "positive": "down", "standard_name": "depth", "axis": "Z"}),
+                "latitude": ("latitude", sr_lats, {"units": "degrees_north", "standard_name": "latitude", "axis": "Y"}),
+                "longitude": ("longitude", sr_lons, {"units": "degrees_east", "standard_name": "longitude", "axis": "X"})
+            },
+            attrs={
+                "title": f"Pinn-Ocean {args.super_res_scale}x High-Resolution 3D Pacific Reconstruction",
+                "scale_factor": f"{args.super_res_scale}x",
+                "conventions": "CF-1.8"
+            }
+        )
+        sr_encoding = {var: {"_FillValue": -9999.0, "dtype": "float32"} for var in sr_ds.data_vars}
+        sr_encoding.update({
+            "depth": {"_FillValue": None, "dtype": "float32"},
+            "latitude": {"_FillValue": None, "dtype": "float32"},
+            "longitude": {"_FillValue": None, "dtype": "float32"},
+            "time": {"_FillValue": None, "dtype": "float64"}
+        })
+        sr_ds.to_netcdf(sr_file, engine="netcdf4", encoding=sr_encoding)
+        sr_size_mb = os.path.getsize(sr_file) / (1024 * 1024)
+        print(f"--> [Success] Super-Resolved NetCDF Export complete! File size: {sr_size_mb:.2f} MB ({sr_file})")
+
     print("=" * 70)
+
 
 
 if __name__ == "__main__":

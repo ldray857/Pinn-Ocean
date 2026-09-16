@@ -11,6 +11,12 @@ from .mld import plot_mld_validation
 from .volumetric_3d import plot_3d_thermohaline_box, plot_3d_isotherm_surface
 from .sections import plot_vertical_section, plot_layer_metrics_profile
 from .horizontal_layers import plot_depth_layers_grid
+from .benchmark_viz import (
+    plot_superiority_radar,
+    plot_physics_stability_transect,
+    plot_glorys_super_resolution_comparison,
+    plot_superiority_bar_summary
+)
 
 __all__ = [
     "plot_vertical_profiles",
@@ -22,6 +28,11 @@ __all__ = [
     "plot_3d_isotherm_surface",
     "plot_vertical_section",
     "plot_layer_metrics_profile",
-    "plot_depth_layers_grid"
+    "plot_depth_layers_grid",
+    "plot_superiority_radar",
+    "plot_physics_stability_transect",
+    "plot_glorys_super_resolution_comparison",
+    "plot_superiority_bar_summary"
 ]
+
 
