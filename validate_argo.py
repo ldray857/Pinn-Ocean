@@ -443,8 +443,7 @@ def plot_argo_visualizations(df: pd.DataFrame, metrics: dict, output_dir: str, y
     ax0 = axes[0]
     ax0.set_facecolor('#F8FAFC')
     ax0.plot(rmse_t_pinn_z, z_centers, 'r-', lw=2.5, label="Swin-Ocean-PINN RMSE(z)")
-    ax0.plot(mae_t_pinn_z, z_centers, 'r--', lw=1.8, label="Swin-Ocean-PINN MAE(z)")
-    ax0.plot(rmse_t_glo_z, z_centers, 'b:', lw=1.8, label="GLORYS12V1 再分析 RMSE(z)")
+    ax0.plot(rmse_t_glo_z, z_centers, 'b:', lw=2.0, label="GLORYS12V1 再分析 RMSE(z)")
     ax0.set_ylim(1000, 0)
     ax0.set_xlabel("温度误差 Temperature Error (°C)", fontsize=11, fontweight='semibold')
     ax0.set_ylabel("水深 Depth / Pressure (dbar)", fontsize=11, fontweight='semibold')
@@ -456,8 +455,7 @@ def plot_argo_visualizations(df: pd.DataFrame, metrics: dict, output_dir: str, y
     ax1 = axes[1]
     ax1.set_facecolor('#F8FAFC')
     ax1.plot(rmse_s_pinn_z, z_centers, 'r-', lw=2.5, label="Swin-Ocean-PINN RMSE(z)")
-    ax1.plot(mae_s_pinn_z, z_centers, 'r--', lw=1.8, label="Swin-Ocean-PINN MAE(z)")
-    ax1.plot(rmse_s_glo_z, z_centers, 'b:', lw=1.8, label="GLORYS12V1 再分析 RMSE(z)")
+    ax1.plot(rmse_s_glo_z, z_centers, 'b:', lw=2.0, label="GLORYS12V1 再分析 RMSE(z)")
     ax1.set_ylim(1000, 0)
     ax1.set_xlabel("盐度误差 Salinity Error (PSU)", fontsize=11, fontweight='semibold')
     ax1.set_title("(b) 全水深 0-1000m 盐度垂直误差衰减廓线", fontsize=11.5, fontweight='bold', pad=10)
@@ -654,8 +652,11 @@ def run_argo_validation():
 
     # 2. Result directories setup
     target_tag = args.tag
-    if target_tag is None and os.path.exists(os.path.join(args.result_dir, "2015_2020")):
-        target_tag = "2015_2020"
+    if target_tag is None:
+        if os.path.exists(os.path.join(args.result_dir, "2012_2020")):
+            target_tag = "2012_2020"
+        elif os.path.exists(os.path.join(args.result_dir, "2015_2020")):
+            target_tag = "2015_2020"
 
     res_dirs = get_result_dirs(
         result_dir=args.result_dir,
@@ -668,7 +669,8 @@ def run_argo_validation():
     ckpt_path = args.checkpoint
     tag_ckpt = os.path.join(res_dirs['ckpt_dir'], "swin_ocean_pinn_best.pth")
     if ckpt_path is None:
-        ckpt_path = tag_ckpt if os.path.exists(tag_ckpt) else "result/2015_2020/checkpoints/swin_ocean_pinn_best.pth"
+        fallback_ckpt = os.path.join("result", target_tag or "2012_2020", "checkpoints", "swin_ocean_pinn_best.pth")
+        ckpt_path = tag_ckpt if os.path.exists(tag_ckpt) else fallback_ckpt
 
     # 3. Load Model
     model, stats = load_model(ckpt_path, device)
