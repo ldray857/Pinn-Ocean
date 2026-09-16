@@ -276,10 +276,10 @@ Pinn-Ocean/
 │   ├── __init__.py
 │   └── test_pipeline.py       # 硬件、Autograd、TEOS-10 及前向反向端到端测试
 ├── data/                      # 真实海洋卫星观测与 GLORYS 3D 再分析数据 (按年分目录存储)
-│   ├── 2015/ ~ 2020/          # 2015–2020 逐年 5 核心要素标准 NetCDF 文件
+│   ├── 2012/ ~ 2020/          # 2012–2020 逐年 9 核心要素标准 NetCDF 文件
 │   └── .gitkeep
 ├── result/                    # 标准化实验成果主目录 (按实验标签自动归档)
-│   └── 2015_2020/             # 2015–2020 六年期训练成果包
+│   └── 2012_2020/             # 2012–2020 9年期训练成果包
 │       ├── checkpoints/       # 最优模型权重 (swin_ocean_pinn_best.pth)
 │       ├── log/               # 训练与评估日志 (train.log, eval.log, metrics_detailed.json)
 │       ├── pic/               # 学术出版级科研对比图件与评测图件 (按功能分类于 4 个子目录)
