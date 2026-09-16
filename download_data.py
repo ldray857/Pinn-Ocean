@@ -161,7 +161,7 @@ def download_dataset(cm_module, key, meta, args, output_dir=None, start_time=Non
         "end_datetime": t_end,
         "output_directory": target_dir,
         "output_filename": filename,
-        "overwrite": False
+        "overwrite_output_data": False
     }
 
     # Depth constraints for 3-D products
