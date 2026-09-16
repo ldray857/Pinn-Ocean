@@ -238,28 +238,28 @@ where $\omega_1, \omega_2$ are learnable homoscedastic log-variance dual paramet
 
 ```text
 Pinn-Ocean/
-├── configs/
+├── configs/                   # Configuration management
 │   ├── __init__.py
-│   └── default_config.py      # Experiment, model, and physical loss hyperparameters
+│   └── default_config.py      # Model, 5-term physics loss weights, and 2012–2020 9-year dataset splits
 ├── pinn_ocean/                # Core Python Package
 │   ├── __init__.py
 │   ├── models/                # Deep learning architectures
 │   │   ├── __init__.py
-│   │   ├── swin_blocks.py     # Swin Transformer basic building blocks (W-MSA/SW-MSA)
-│   │   └── swin_ocean_pinn.py # Swin-Ocean-PINN end-to-end continuous operator model
-│   ├── losses/                # Physics & adaptive optimization losses
+│   │   ├── swin_blocks.py     # Swin Transformer basic building blocks (W-MSA/SW-MSA/PatchMerging)
+│   │   └── swin_ocean_pinn.py # Swin-Ocean-PINN continuous neural operator model with coordinate decoder
+│   ├── losses/                # Physics-informed & adaptive optimization losses
 │   │   ├── __init__.py
-│   │   ├── physics_loss.py    # Analytical Autograd gradient and stratification losses
-│   │   └── adaptive_loss.py   # Adaptive multi-objective uncertainty weighting
+│   │   ├── physics_loss.py    # 5-term active physics loss (SLA steric, TEOS-10 stability, surface, gradient, MLD)
+│   │   └── adaptive_loss.py   # Kendall & Gal Bayesian homoscedastic uncertainty multi-objective weighting
 │   ├── datasets/              # Data ingestion and IO
 │   │   ├── __init__.py
 │   │   ├── downloader.py      # CMEMS subsetting wrapper module
-│   │   └── ocean_dataset.py   # NetCDF4 / Xarray multi-year automatic concatenation loader
+│   │   └── ocean_dataset.py   # NetCDF4 / Xarray multi-year automatic concatenation loader (2012–2020 9-year sequence)
 │   ├── utils/                 # Marine physics & evaluation metrics
 │   │   ├── __init__.py
-│   │   ├── teos10.py          # Fully differentiable TEOS-10 seawater equation of state
-│   │   ├── io.py              # Standardized result/<year_tag>/ directory manager
-│   │   └── metrics.py         # RMSE, MAE, R^2, and Mixed Layer Depth (MLD) utilities
+│   │   ├── teos10.py          # Differentiable TEOS-10 seawater equation of state & local-pressure N^2 calculation
+│   │   ├── io.py              # Standardized result/<year_tag>/ directory manager and safe netCDF exporter
+│   │   └── metrics.py         # RMSE, MAE, R^2, MLD, CIR, TMV 4-tier academic evaluation metrics
 │   └── visualization/         # Modular scientific plotting subpackage (publication styling)
 │       ├── __init__.py
 │       ├── horizontal_layers.py # 50m-interval layer-by-layer horizontal depth slices (0-1000m)
@@ -268,29 +268,48 @@ Pinn-Ocean/
 │       ├── volumetric_3d.py   # True 3D isotherm surface topography & volume slices
 │       ├── ts_diagram.py      # Temperature-Salinity (T-S) consistency diagram
 │       ├── scatter_density.py # Hexbin scatter density & R^2 evaluation
-│       └── mld.py             # Mixed Layer Depth (MLD) interface validation
+│       ├── mld.py             # Mixed Layer Depth (MLD) interface validation
+│       └── benchmark_viz.py   # Multi-model 6-axis superiority radar, transect stability & summary bar chart
 ├── tests/                     # Automated unit and integration test suite
 │   ├── __init__.py
 │   └── test_pipeline.py       # Comprehensive end-to-end verification without external data
+├── docs/                      # Research reports and scientific documentation
+│   ├── image/                 # Report figures and architecture illustrations
+│   ├── research_report.md     # Comprehensive academic research report with formal mathematical analysis
+│   └── 研究报告.md             # Chinese 2012–2020 9-year comprehensive scientific report
 ├── data/                      # Local NetCDF observation and reanalysis data (partitioned by year)
-│   ├── 2015/ ~ 2020/          # 2015–2020 5-parameter yearly NetCDF datasets
+│   ├── 2012/ ~ 2020/          # 2012–2020 9-year 5-parameter yearly NetCDF datasets (SLA/SST/SSS/Wind/GLORYS 3D)
+│   ├── argo/                  # In-situ Argo physical float observation NetCDF datasets (79 floats, year 2020)
 │   └── .gitkeep
 ├── result/                    # Standardized experiment output root directory
-│   └── 2015_2020/             # 2015–2020 six-year experiment asset bundle
+│   └── 2012_2020/             # 2012–2020 9-year experiment asset bundle
 │       ├── checkpoints/       # Best model checkpoint (swin_ocean_pinn_best.pth)
-│       ├── log/               # Training & evaluation logs (train.log, eval.log, metrics_detailed.json)
-│       ├── pic/               # Publication-grade 300 DPI figures organized into 4 categorized subdirectories
+│       ├── log/               # Training & evaluation logs, summary metrics, and reports
+│       │   ├── train.log              # 300-epoch training convergence log with adaptive weights
+│       │   ├── eval.log               # 2020 blind test set 4-tier academic evaluation log
+│       │   ├── metrics_detailed.json  # 3D full-depth layer-wise quantitative errors & physical compliance
+│       │   ├── benchmark_summary.json # Quantitative benchmark metrics across 3 models
+│       │   ├── benchmark_report.md    # Academic superiority benchmark report
+│       │   ├── argo_validation_summary.json # 79 in-situ floats (447,292 points) validation metrics
+│       │   └── argo_validation_report.md    # In-situ Argo float independent generalization report
+│       ├── pic/               # Publication-grade 300 DPI figures organized into 5 categorized subdirectories
 │       │   ├── 01_spatial_layers/        # Fig01 ~ Fig02: 50m-interval subsurface horizontal slices
 │       │   ├── 02_vertical_profiles/     # Fig03 ~ Fig04: Vertical profiles & layer-wise error curves
 │       │   ├── 03_physical_diagnostics/  # Fig05 ~ Fig06: T-S diagram & hexbin scatter density
-│       │   └── 04_superiority_benchmark/ # Fig07 ~ Fig10: Superiority radar, transect stability & super-res
+│       │   ├── 04_superiority_benchmark/ # Fig07 ~ Fig10: Superiority radar, transect stability, super-res & bar summary
+│       │   └── 05_argo_validation/       # Fig11 ~ Fig14: 79 in-situ Argo floats (44.7w points) independent validation
 │       └── con/               # 3-D volumetric NetCDF & ArcGIS Pro 10m regular voxel layers
+│           ├── pacific_reconstructed_3d_test.nc         # Full-depth 25-layer non-uniform reconstructed 3D netCDF
+│           └── pacific_reconstructed_3d_test_regular.nc # ArcGIS Pro 10m regular 101-layer voxel digital twin
 ├── download_data.py           # Automated data collection tool for Open Pacific CMEMS datasets
 ├── download_argo.py           # In-situ Argo float profile data acquisition tool via argopy
-├── train.py                   # Model training entry point (multi-year support & active physics)
+├── train.py                   # Model training entry point (2012–2020 9-year sequence & active physics)
 ├── evaluate.py                # Model evaluation and 4-tier physics/layer validation engine
 ├── predict.py                 # Full 3-D volumetric inference & dual CF-compliant NetCDF exporter
 ├── visualize.py               # Main CLI visualization orchestrator (50m layers, sections & profiles)
+├── benchmark.py               # Multi-model superiority benchmark runner (Pure-CNN / Pure-Swin / PINN)
+├── validate_argo.py           # Real in-situ Argo float generalization validation runner (44.7w points)
+├── super_resolve.py           # GLORYS continuous super-resolution interpolation and diagnostic tool
 ├── demo_test.py               # Quick verification entry point (delegates to tests/)
 ├── requirements.txt           # Environment dependencies
 ├── setup.py                   # Python package installer

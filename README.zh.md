@@ -241,65 +241,84 @@ $$
 
 ```text
 Pinn-Ocean/
-├── configs/
+├── configs/                   # 模型、物理约束与训练配置模块
 │   ├── __init__.py
-│   └── default_config.py      # 模型、训练超参数与物理损失权重配置
+│   └── default_config.py      # 模型超参数、5重物理损失权重与 2012–2020 9年长时序切分配置
 ├── pinn_ocean/                # 核心算法 Python 包
 │   ├── __init__.py
 │   ├── models/                # 神经网络架构定义
 │   │   ├── __init__.py
-│   │   ├── swin_blocks.py     # Swin Transformer 基础模块 (W-MSA/SW-MSA)
-│   │   └── swin_ocean_pinn.py # Swin-Ocean-PINN 端到端连续物理算子模型
+│   │   ├── swin_blocks.py     # Swin Transformer 基础模块 (W-MSA/SW-MSA/PatchMerging)
+│   │   └── swin_ocean_pinn.py # Swin-Ocean-PINN 端到端连续物理算子模型 (含神经坐标解码器)
 │   ├── losses/                # 物理先验与自适应优化损失
 │   │   ├── __init__.py
-│   │   ├── physics_loss.py    # 4D 逐点 Autograd 微分、混合层与层结稳定损失
-│   │   └── adaptive_loss.py   # 同方差不确定性多目标自适应动态加权
+│   │   ├── physics_loss.py    # 5重主动物理损失 (SLA比容积分/TEOS-10浮力频率/表层边界/剖面梯度/混合层)
+│   │   └── adaptive_loss.py   # Kendall & Gal 贝叶斯同方差不确定性多目标自适应动态加权
 │   ├── datasets/              # 数据采集与多源时空对齐模块
 │   │   ├── __init__.py
 │   │   ├── downloader.py      # CMEMS API 流式切片下载封装
-│   │   └── ocean_dataset.py   # NetCDF4 / xarray 多年度时序自动拼接加载器
+│   │   └── ocean_dataset.py   # NetCDF4 / xarray 多年度时序自动拼接加载器 (2012–2020 9年长序列)
 │   ├── utils/                 # 海洋物理热力学方程与评估指标
 │   │   ├── __init__.py
-│   │   ├── teos10.py          # 纯 PyTorch 全微积分实现之 TEOS-10 海水状态方程
-│   │   ├── io.py              # 规范化 result/<year_tag>/ 目录结构管理
-│   │   └── metrics.py         # RMSE、MAE、R^2 及混合层深度 (MLD) 计算工具
-│   └── visualization/         # 模块化科研绘图子包 (中文字体自适应与高质导出)
+│   │   ├── teos10.py          # 纯 PyTorch 可微 TEOS-10 海水状态方程与局部压力浮力频率 N^2 计算
+│   │   ├── io.py              # 规范化 result/<year_tag>/ 实验成果目录管理与安全导出
+│   │   └── metrics.py         # RMSE、MAE、R^2、MLD、CIR、TMV 等四阶学术评测体系工具
+│   └── visualization/         # 模块化科研绘图子包 (中英双语字体自适应与高质导出)
 │       ├── __init__.py
-│       ├── horizontal_layers.py # 50米间隔水平逐层切片对比图 (0-1000m)
+│       ├── horizontal_layers.py # 50m 间隔水平逐层切片对比图 (0-1000m)
 │       ├── profiles.py        # 典型动力学站位阵列剖面与单站位剖面重构对比
 │       ├── sections.py        # 二维连续垂直断面图 (35°N 黑潮延伸体) 与垂直误差廓线
 │       ├── volumetric_3d.py   # 真三维正交体切片围栏图 (Fence Box) 与 15°C 特征等温面三维拓扑
 │       ├── ts_diagram.py      # 温盐关系 (T-S Diagram) 物理一致性与水团保真检验
 │       ├── scatter_density.py # 全深度 Hexbin 散点密度与拟合优度 R^2 绘图
-│       └── mld.py             # 上混合层深度 (MLD) 物理界面反演对比绘图
+│       ├── mld.py             # 上混合层深度 (MLD) 物理界面反演对比绘图
+│       └── benchmark_viz.py   # 多模型优度六维雷达对比、黑潮断面对流稳定性与综合柱状图
 ├── tests/                     # 自动化单元测试套件
 │   ├── __init__.py
 │   └── test_pipeline.py       # 硬件、Autograd、TEOS-10 及前向反向端到端测试
+├── docs/                      # 课题科研报告与技术论证文档
+│   ├── image/                 # 文档配图与示意图
+│   ├── research_report.md     # 完整英文万字学术研究报告
+│   └── 研究报告.md             # 2012–2020 九年全要素科研报告与详尽评估
 ├── data/                      # 真实海洋卫星观测与 GLORYS 3D 再分析数据 (按年分目录存储)
-│   ├── 2012/ ~ 2020/          # 2012–2020 逐年 9 核心要素标准 NetCDF 文件
+│   ├── 2012/ ~ 2020/          # 2012–2020 逐年 9 年期多源要素 NetCDF 文件 (SLA/SST/SSS/Wind/GLORYS 3D)
+│   ├── argo/                  # 2020 年西北太平洋 79 个在轨物理浮标实测 NetCDF 数据集
 │   └── .gitkeep
 ├── result/                    # 标准化实验成果主目录 (按实验标签自动归档)
-│   └── 2012_2020/             # 2012–2020 9年期训练成果包
+│   └── 2012_2020/             # 2012–2020 9年长序列完整训练与盲测成果包
 │       ├── checkpoints/       # 最优模型权重 (swin_ocean_pinn_best.pth)
-│       ├── log/               # 训练与评估日志 (train.log, eval.log, metrics_detailed.json)
-│       ├── pic/               # 学术出版级科研对比图件与评测图件 (按功能分类于 4 个子目录)
-│       │   ├── 01_spatial_layers/        # Fig01 ~ Fig02: 50m 逐层水平反演切片
-│       │   ├── 02_vertical_profiles/     # Fig03 ~ Fig04: 垂向结构与逐层误差分布
-│       │   ├── 03_physical_diagnostics/  # Fig05 ~ Fig06: 温盐物理诊断与相关性统计
-│       │   └── 04_superiority_benchmark/ # Fig07 ~ Fig10: 多模型学术优度与超分评测
-│       └── con/               # 3D 立体反演 NetCDF 与 ArcGIS Pro 10m 体素数据
+│       ├── log/               # 全套训练日志、评估报告与量化 JSON 成果
+│       │   ├── train.log              # 300 轮训练收敛日志 (含自适应不确定性权重变化)
+│       │   ├── eval.log               # 2020 盲测集四阶学术评测日志
+│       │   ├── metrics_detailed.json  # 3D 全深度逐层定量误差与物理合规统计指标
+│       │   ├── benchmark_summary.json # 三模型学术优度对比定量评测指标
+│       │   ├── benchmark_report.md    # 多模型综合优度学术对比详细报告
+│       │   ├── argo_validation_summary.json # 79 个在轨浮标 44.7 万测点实测评估指标
+│       │   └── argo_validation_report.md    # Argo 实测盲测独立泛化性学术评估报告
+│       ├── pic/               # 学术出版级科研对比图件与评测图件 (5 大功能分类子目录)
+│       │   ├── 01_spatial_layers/        # Fig01 ~ Fig02: 50m 逐层水平反演切片与差异场
+│       │   ├── 02_vertical_profiles/     # Fig03 ~ Fig04: 垂向剖面结构与逐层误差廓线
+│       │   ├── 03_physical_diagnostics/  # Fig05 ~ Fig06: 温盐水团 T-S 诊断与 Hexbin 相关性
+│       │   ├── 04_superiority_benchmark/ # Fig07 ~ Fig10: 六维优度雷达、对流失稳断面、超分与柱状图
+│       │   └── 05_argo_validation/       # Fig11 ~ Fig14: 真实在轨浮标 44.7 万实测点独立检验图集
+│       └── con/               # 3D 立体反演 NetCDF 与 ArcGIS Pro 10m 体素数字孪生资产
+│           ├── pacific_reconstructed_3d_test.nc         # 全水深 25 层非均匀浮点反演三维数据资产
+│           └── pacific_reconstructed_3d_test_regular.nc # ArcGIS Pro 专用 10m 等间距 101 层体素切片资产
 ├── download_data.py           # CMEMS 开阔太平洋多源遥感与 3D 再分析数据自动化下载脚本
 ├── download_argo.py           # 基于 argopy 的真实 Argo 浮标实测数据自动化下载与质控导出脚本
-├── train.py                   # 完整模型训练主入口 (支持多卡加速与主动物理约束)
+├── train.py                   # 完整模型训练主入口 (支持 2012–2020 长时序与 5 重主动物理约束)
 ├── evaluate.py                # 检查点评估与全深度物理指标验证脚本 (四阶评判体系)
 ├── predict.py                 # 全域三维立体反演与双格式 CF-1.8 NetCDF4 资产导出脚本
 ├── visualize.py               # 一键生成全部科研图件的主入口 (集成 50m 分层、断面与剖面)
+├── benchmark.py               # 多模型全维度学术优度评测主脚本 (Pure-CNN / Pure-Swin / PINN)
+├── validate_argo.py           # 真实在轨 Argo 物理浮标实测泛化性独立验证主脚本 (44.7 万实测点)
+├── super_resolve.py           # GLORYS 连续高分辨率超分插值与局部动力学放大对比脚本
 ├── demo_test.py               # 独立自检单元测试快速入口
 ├── requirements.txt           # 运行环境依赖清单
 ├── setup.py                   # Python 包安装与打包脚本
 ├── LICENSE                    # MIT 开源许可证
-├── README.md                  # 英文项目说明
-└── README.zh.md               # 中文项目说明
+├── README.md                  # 英文项目说明与学术指引
+└── README.zh.md               # 中文项目说明与学术指引
 ```
 
 ---
