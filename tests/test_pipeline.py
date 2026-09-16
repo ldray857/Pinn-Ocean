@@ -20,12 +20,107 @@ import torch.optim as optim
 import numpy as np
 
 
+import unittest
 from configs.default_config import ModelConfig, PhysicsConfig
 from pinn_ocean.models.swin_ocean_pinn import SwinOceanPINN
 from pinn_ocean.losses.physics_loss import OceanPhysicsLoss
 from pinn_ocean.losses.adaptive_loss import AdaptiveMultiObjectiveLoss
 from pinn_ocean.utils.teos10 import approx_seawater_density
 from pinn_ocean.utils.metrics import calc_rmse, calc_r2, calc_mld
+
+
+class TestPinnOceanPipeline(unittest.TestCase):
+    """Standard unittest test case for Pinn-Ocean pipeline components."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        cls.B, cls.H, cls.W = 2, 40, 40
+        cls.D = 25
+        cls.x_8ch = torch.randn(cls.B, 8, cls.H, cls.W, device=cls.device)
+        cls.z_raw = torch.linspace(0.5, 1000.0, cls.D, device=cls.device)
+
+    def test_01_cuda_and_env(self):
+        self.assertIsNotNone(self.device)
+
+    def test_02_teos10_differentiable_density(self):
+        sample_sal = torch.tensor([34.5, 35.0, 35.5], requires_grad=True, device=self.device)
+        sample_temp = torch.tensor([25.0, 15.0, 5.0], requires_grad=True, device=self.device)
+        sample_depth = torch.tensor([10.0, 200.0, 800.0], requires_grad=True, device=self.device)
+        rho = approx_seawater_density(sample_sal, sample_temp, sample_depth)
+        self.assertEqual(rho.shape, (3,))
+        self.assertTrue(torch.all(rho > 1000.0) and torch.all(rho < 1050.0))
+        rho.sum().backward()
+        self.assertIsNotNone(sample_depth.grad)
+
+    def test_03_swin_ocean_pinn_architecture(self):
+        model = SwinOceanPINN(
+            in_channels=8, embed_dim=64, window_size=4,
+            physics_hidden_dim=128, out_dim=2
+        ).to(self.device)
+        total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        self.assertGreater(total_params, 10000)
+
+    def test_04_forward_pass_modes(self):
+        model = SwinOceanPINN(
+            in_channels=8, embed_dim=64, window_size=4,
+            physics_hidden_dim=128, out_dim=2
+        ).to(self.device)
+        preds_full = model(self.x_8ch, self.z_raw, sample_idx=None)
+        self.assertEqual(preds_full.shape, (self.B, 2, self.D, self.H, self.W))
+
+        sample_idx = torch.randperm(self.H * self.W)[:500].to(self.device)
+        preds_sampled = model(self.x_8ch, self.z_raw, sample_idx=sample_idx)
+        self.assertEqual(preds_sampled.shape, (self.B, 2, self.D, 500))
+
+    def test_05_physics_loss_and_backward(self):
+        model = SwinOceanPINN(
+            in_channels=8, embed_dim=64, window_size=4,
+            physics_hidden_dim=128, out_dim=2
+        ).to(self.device)
+        phy_loss_fn = OceanPhysicsLoss().to(self.device)
+        adaptive_loss_fn = AdaptiveMultiObjectiveLoss().to(self.device)
+        mse_loss_fn = nn.MSELoss()
+
+        sample_idx = torch.randperm(self.H * self.W)[:500].to(self.device)
+        synthetic_target = torch.randn(self.B, 2, self.D, 500, device=self.device)
+        synthetic_stats = {
+            'mean_t': 15.0, 'std_t': 8.0,
+            'mean_s': 34.5, 'std_s': 0.5,
+            'mean_sla': 0.0, 'std_sla': 0.1
+        }
+        surface_obs = {
+            'sst': self.x_8ch[:, 0].flatten(1)[:, sample_idx],
+            'sla': self.x_8ch[:, 1].flatten(1)[:, sample_idx],
+            'sss': self.x_8ch[:, 2].flatten(1)[:, sample_idx]
+        }
+
+        z_raw_pts = self.z_raw.view(1, 1, self.D, 1).repeat(self.B, 500, 1, 1).requires_grad_(True)
+        preds_sampled_pts = model(self.x_8ch, z_raw_pts, sample_idx=sample_idx)
+        loss_data_pts = mse_loss_fn(preds_sampled_pts, synthetic_target)
+        loss_phy_pts, _ = phy_loss_fn(
+            preds_sampled_pts, z_raw_pts, stats=synthetic_stats, z_raw=self.z_raw,
+            surface_obs=surface_obs, y_target=synthetic_target
+        )
+        total_loss_pts, _, _ = adaptive_loss_fn(loss_data_pts, loss_phy_pts)
+
+        optimizer = optim.AdamW(list(model.parameters()) + list(adaptive_loss_fn.parameters()), lr=1e-3)
+        optimizer.zero_grad()
+        total_loss_pts.backward()
+        optimizer.step()
+        self.assertFalse(torch.isnan(total_loss_pts))
+
+    def test_06_baselines_1d_and_4d(self):
+        from pinn_ocean.models.baselines import PureDataCNN3D
+        cnn = PureDataCNN3D(in_channels=8, hidden_dim=32).to(self.device)
+
+        out_1d = cnn(self.x_8ch, self.z_raw)
+        self.assertEqual(out_1d.shape, (self.B, 2, self.D, self.H, self.W))
+
+        z_4d = self.z_raw.view(1, 1, self.D, 1).repeat(self.B, 100, 1, 1)
+        sample_idx = torch.arange(100).to(self.device)
+        out_4d = cnn(self.x_8ch, z_4d, sample_idx=sample_idx)
+        self.assertEqual(out_4d.shape, (self.B, 2, self.D, 100))
 
 
 def run_unit_tests():
@@ -203,6 +298,11 @@ def run_unit_tests():
     cnn_model = PureDataCNN3D(in_channels=8, hidden_dim=32).to(device)
     out_cnn = cnn_model(x_8ch, z_raw)
     assert out_cnn.shape == (B, 2, D, H, W), "PureDataCNN forward pass mismatch"
+
+    # Test 4D depth input in sampling mode
+    z_4d_test = z_raw.view(1, 1, D, 1).repeat(B, 500, 1, 1)
+    out_cnn_4d = cnn_model(x_8ch, z_4d_test, sample_idx=sample_idx)
+    assert out_cnn_4d.shape == (B, 2, D, 500), "PureDataCNN 4D input forward mismatch"
 
     sup_score = calc_model_superiority_index(
         rmse_t=1.54, rmse_s=0.10, r2_t=0.95, r2_s=0.88,

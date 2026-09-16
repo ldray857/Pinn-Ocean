@@ -15,6 +15,18 @@ import argparse
 from datetime import datetime
 from typing import Optional, List
 
+# Pre-import HDF5 and NetCDF backends to ensure Windows dynamic linker pre-loads DLLs
+# before copernicusmarine network operations, preventing downstream h5netcdf DLL load errors
+try:
+    import h5py  # noqa: F401
+except ImportError:
+    pass
+try:
+    import netCDF4  # noqa: F401
+except ImportError:
+    pass
+
+
 
 # Default Open Pacific bounding box (100% deep ocean, zero land points)
 DEFAULT_MIN_LON = 145.0
@@ -22,9 +34,9 @@ DEFAULT_MAX_LON = 165.0
 DEFAULT_MIN_LAT = 30.0
 DEFAULT_MAX_LAT = 40.0
 
-# 9-Year Time Window: 2013-01-01 to 2021-12-31
-DEFAULT_START_TIME = "2013-01-01"
-DEFAULT_END_TIME = "2021-12-31"
+# 9-Year Time Window: 2012-01-01 to 2020-12-31 (108 months)
+DEFAULT_START_TIME = "2012-01-01"
+DEFAULT_END_TIME = "2020-12-31"
 
 # Depth range for subsurface thermohaline fields (meters)
 # (GLORYS surface begins at 0.494m; using 0.49 avoids boundary warnings)

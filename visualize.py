@@ -301,7 +301,20 @@ def run_visualization():
     if args.benchmark:
         print("\nExecuting multi-model superiority benchmark suite (--benchmark enabled)...")
         from benchmark import run_benchmark
-        run_benchmark()
+        bm_args = [
+            "--data_dir", args.data_dir,
+            "--mode", args.mode,
+            "--device", args.device,
+            "--result_dir", args.result_dir
+        ]
+        if args.checkpoint:
+            bm_args.extend(["--checkpoint", args.checkpoint])
+        if args.tag:
+            bm_args.extend(["--tag", args.tag])
+        if args.years:
+            bm_args.append("--years")
+            bm_args.extend([str(y) for y in args.years])
+        run_benchmark(bm_args)
 
 
 if __name__ == "__main__":

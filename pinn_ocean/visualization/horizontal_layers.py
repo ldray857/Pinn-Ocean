@@ -87,7 +87,9 @@ def plot_depth_layers_grid(
     fig.suptitle(f"Northwest Pacific {title_var} Layer-by-Layer Subsurface Evaluation (50m Intervals)", fontsize=16, fontweight='bold', y=1.01)
 
     if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        parent_dir = os.path.dirname(save_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         fig.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close(fig)
         return save_path

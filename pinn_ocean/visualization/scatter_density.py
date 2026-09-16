@@ -56,7 +56,9 @@ def plot_scatter_density(
     plt.colorbar(hb_s, ax=axes[1], label="样本点密度 log10(N)")
 
     plt.tight_layout()
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    parent_dir = os.path.dirname(save_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(save_path, dpi=300)
-    plt.close()
+    plt.close(fig)
     return save_path

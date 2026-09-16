@@ -7,6 +7,17 @@ Encapsulates CMEMS data subsetting API calls for programmatic usage.
 import os
 from typing import Dict, Any, Optional, List
 
+# Pre-import HDF5 and NetCDF backends to ensure Windows dynamic linker pre-loads DLLs
+try:
+    import h5py  # noqa: F401
+except ImportError:
+    pass
+try:
+    import netCDF4  # noqa: F401
+except ImportError:
+    pass
+
+
 
 def download_pacific_dataset(
     dataset_id: str,

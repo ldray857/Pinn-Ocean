@@ -67,7 +67,9 @@ def plot_layer_metrics_profile(
 
     fig.suptitle("Swin-Ocean-PINN 太平洋三维次表层温盐逐层垂直反演精度与衰减剖面 (0-1000m)", fontsize=14, fontweight='bold', y=0.98)
     plt.tight_layout()
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    parent_dir = os.path.dirname(save_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(save_path, dpi=300)
     plt.close(fig)
     return save_path

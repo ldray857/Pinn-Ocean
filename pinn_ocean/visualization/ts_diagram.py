@@ -47,7 +47,9 @@ def plot_ts_diagram(
     ax.legend(fontsize=11, loc='upper left')
 
     plt.tight_layout()
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    parent_dir = os.path.dirname(save_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(save_path, dpi=300)
-    plt.close()
+    plt.close(fig)
     return save_path

@@ -15,9 +15,15 @@ Performs 3-D super-resolution on GLORYS ocean fields and multi-source satellite 
 Exports publication-grade CF-1.8 NetCDF4 assets natively compatible with ArcGIS Pro 3.x Voxel Layers.
 """
 
+try:
+    import h5py
+except ImportError:
+    pass
+
 import os
 import sys
 import argparse
+from typing import Optional
 import torch
 import numpy as np
 import xarray as xr
@@ -25,6 +31,21 @@ from torch.utils.data import DataLoader
 
 from configs.default_config import ModelConfig
 from pinn_ocean.models.swin_ocean_pinn import SwinOceanPINN
+
+
+def _safe_to_netcdf(ds: xr.Dataset, path: str, encoding: Optional[dict] = None):
+    """
+    Safely export Dataset to NetCDF4 file, trying h5netcdf first to bypass
+    Windows netCDF4 C DLL symbol resolution conflicts (ERROR_PROC_NOT_FOUND).
+    """
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    for eng in ("h5netcdf", "netcdf4", "scipy"):
+        try:
+            ds.to_netcdf(path, engine=eng, encoding=encoding)
+            return
+        except Exception:
+            continue
+    ds.to_netcdf(path, encoding=encoding)
 from pinn_ocean.models.super_resolution import (
     ContinuousSpaceDepthSuperResolver,
     GLORYS3DInterpolator,
@@ -270,7 +291,7 @@ def main():
     }
 
     print(f"\nWriting high-resolution dataset to NetCDF4 file: {output_file} ...")
-    ds_hr.to_netcdf(output_file, engine="netcdf4", encoding=encoding)
+    _safe_to_netcdf(ds_hr, output_file, encoding=encoding)
     file_size_mb = os.path.getsize(output_file) / (1024 * 1024)
 
     print(f"--> [Success] Super-Resolution Export Complete! File size: {file_size_mb:.2f} MB")

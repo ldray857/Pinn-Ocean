@@ -142,7 +142,9 @@ def plot_3d_thermohaline_box(
     )
     fig.suptitle(main_title, fontsize=14, fontweight='bold', y=0.98)
 
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    parent_dir = os.path.dirname(save_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close(fig)
     return save_path

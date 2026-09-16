@@ -20,6 +20,11 @@ Generates:
 - result/<tag>/log/argo_validation_summary.json
 """
 
+try:
+    import h5py  # Pre-load HDF5 DLLs on Windows before xarray backend initialization
+except ImportError:
+    pass
+
 import os
 import sys
 import json
@@ -30,6 +35,16 @@ import pandas as pd
 import xarray as xr
 import torch
 from scipy.interpolate import RegularGridInterpolator
+
+
+def _safe_open_dataset(file_path: str) -> xr.Dataset:
+    """Safely open NetCDF dataset trying h5netcdf first (to prevent Windows netCDF4 DLL issues)."""
+    for engine in ("h5netcdf", "netcdf4", "scipy"):
+        try:
+            return xr.open_dataset(file_path, engine=engine)
+        except Exception:
+            continue
+    return xr.open_dataset(file_path)
 
 if sys.platform == "win32":
     try:
@@ -151,7 +166,7 @@ def match_argo_points(argo_nc_path, dataset_times, depths, lats, lons,
     if not os.path.exists(argo_nc_path):
         raise FileNotFoundError(f"Argo observation file not found at: {argo_nc_path}")
 
-    ds_argo = xr.open_dataset(argo_nc_path)
+    ds_argo = _safe_open_dataset(argo_nc_path)
     times_raw = pd.to_datetime(ds_argo['TIME'].values)
     lats_raw = ds_argo['LATITUDE'].values.astype(np.float32)
     lons_raw = ds_argo['LONGITUDE'].values.astype(np.float32)

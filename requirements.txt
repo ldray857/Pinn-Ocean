@@ -32,7 +32,7 @@ pydantic>=2.0.0
 tqdm>=4.65.0
 
 # --- In-situ Argo Float Data Fetching & Independent Validation ---
-argopy>=1.2.0
+# argopy>=1.2.0  # Optional: For download_argo.py (recommended in separate data-download env to avoid Windows xarray warnings)
 erddapy>=2.2.0
 
 

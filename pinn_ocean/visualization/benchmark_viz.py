@@ -32,17 +32,17 @@ def plot_superiority_radar(
 ):
     """
     Plots a multi-model 6-axis radar chart showing relative superiority across:
-    1. 温度重构拟合度 (Temperature Fidelity)
-    2. 盐度跃层拟合度 (Salinity Fidelity)
-    3. 空间决定系数 (R^2 Score)
+    1. 温度决定系数 (Temperature R^2)
+    2. 盐度决定系数 (Salinity R^2)
+    3. 主跃层决定系数 (Thermocline R^2)
     4. 层结防倒置合规率 (Stratification Stability: 100% - CIR)
     5. 深水热力学单调性 (Deep Monotonicity: 100% - TMV)
     6. 混合层界面精准度 (MLD Boundary Fidelity)
     """
     categories = [
-        "温度拟合精度\n(Temp Fidelity)",
-        "盐度跃层拟合\n(Sal Fidelity)",
-        "空间解释度\n($R^2$ Score)",
+        "温度解释度\n(Temp $R^2$)",
+        "盐度解释度\n(Sal $R^2$)",
+        "跃层解释度\n(Thermocline $R^2$)",
         "层结防倒置率\n(Stability 1-CIR)",
         "深水单调合规\n(Monotonicity 1-TMV)",
         "混合层界面\n(MLD Accuracy)"
@@ -96,9 +96,11 @@ def plot_superiority_radar(
     plt.legend(loc='upper right', bbox_to_anchor=(1.35, 1.15), fontsize=9.5, frameon=True, facecolor='#FFFFFF', edgecolor='#E2E8F0')
 
     plt.tight_layout()
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    parent_dir = os.path.dirname(output_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
+    plt.close(fig)
     print(f"--> [Saved Fig] Multi-Model Superiority Radar: {output_path}")
 
 
@@ -177,9 +179,11 @@ def plot_physics_stability_transect(
 
     axes[-1].set_xlabel("经度 Longitude (°E)", fontsize=10.5)
     plt.tight_layout()
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    parent_dir = os.path.dirname(output_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
+    plt.close(fig)
     print(f"--> [Saved Fig] Physics Stratification Transect Comparison: {output_path}")
 
 
@@ -256,9 +260,11 @@ def plot_glorys_super_resolution_comparison(
     plt.suptitle(f"GLORYS 三维温盐场空间插值高分与超分辨力对比 (水深 {depth_m:.0f}m)", fontsize=14, fontweight='bold', y=0.98)
     plt.subplots_adjust(bottom=0.10, top=0.93, hspace=0.25, wspace=0.18)
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    parent_dir = os.path.dirname(output_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
+    plt.close(fig)
     print(f"--> [Saved Fig] GLORYS Super-Resolution Comparison: {output_path}")
 
 
@@ -273,9 +279,13 @@ def plot_superiority_bar_summary(
     models = list(benchmark_data.keys())
     n_models = len(models)
 
+    # Use thermocline salinity R^2 if available, else full-depth salinity R^2
+    sal_key = "sal_r2_thermocline" if any("sal_r2_thermocline" in benchmark_data[m] for m in models) else "sal_r2"
+    sal_label = "温跃层盐度决定系数 $R^2$" if sal_key == "sal_r2_thermocline" else "全水深盐度决定系数 $R^2$"
+
     metrics = [
-        ("temp_rmse", "全水深温度 RMSE (°C)", "lower_is_better"),
-        ("sal_rmse_thermocline", "温跃层盐度 RMSE (PSU)", "lower_is_better"),
+        ("temp_r2", "全水深温度决定系数 $R^2$", "higher_is_better"),
+        (sal_key, sal_label, "higher_is_better"),
         ("cir_percent", "浮力频率失稳率 CIR (%)", "lower_is_better"),
         ("tmv_percent", "深水逆温违背率 TMV (%)", "lower_is_better")
     ]
@@ -294,9 +304,15 @@ def plot_superiority_bar_summary(
         bars = ax.bar(models, vals, color=bar_colors, width=0.55, edgecolor='#334155', linewidth=0.8)
 
         # Highlight best
-        best_val = min(vals) if direction == "lower_is_better" else max(vals)
+        best_val = max(vals) if direction == "higher_is_better" else min(vals)
         ax.set_title(metric_label, fontsize=11, fontweight='bold', pad=8)
-        ax.set_ylabel(metric_label.split(" ")[-1], fontsize=9.5)
+        
+        if direction == "higher_is_better":
+            ax.set_ylabel("决定系数 $R^2$", fontsize=9.5)
+            ax.set_ylim(0, 1.15)
+        else:
+            ax.set_ylabel(metric_label.split(" ")[-1], fontsize=9.5)
+
         ax.grid(axis='y', linestyle='--', alpha=0.5)
 
         # Annotate numbers on top of bars
@@ -307,7 +323,7 @@ def plot_superiority_bar_summary(
             txt_color = '#DC2626' if is_best else '#1E293B'
             ax.text(
                 bar.get_x() + bar.get_width() / 2.0,
-                height + (max(vals) * 0.02),
+                height + (max(vals) * 0.02 if max(vals) > 0 else 0.02),
                 f"{val:.3f}" if val < 1.0 else f"{val:.2f}",
                 ha='center', va='bottom', fontsize=9.5, fontweight=weight, color=txt_color
             )
@@ -320,7 +336,9 @@ def plot_superiority_bar_summary(
     plt.tight_layout()
     plt.subplots_adjust(top=0.92)
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    parent_dir = os.path.dirname(output_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
+    plt.close(fig)
     print(f"--> [Saved Fig] Superiority Bar Summary: {output_path}")
