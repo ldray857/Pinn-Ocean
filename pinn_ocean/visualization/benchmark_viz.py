@@ -58,7 +58,6 @@ def plot_superiority_radar(
 
     # Color and styling palette
     model_styles = {
-        "Trilinear (三维空间插值)": {"color": "#64748B", "linestyle": "--", "alpha": 0.10, "marker": "o", "linewidth": 1.5},
         "Pure-CNN (无物理卷积网络)": {"color": "#F59E0B", "linestyle": "-.", "alpha": 0.15, "marker": "s", "linewidth": 2.0},
         "Pure-Swin (无物理消融对照)": {"color": "#3B82F6", "linestyle": ":", "alpha": 0.20, "marker": "^", "linewidth": 2.2},
         "Swin-Ocean-PINN (本项目模型)": {"color": "#DC2626", "linestyle": "-", "alpha": 0.35, "marker": "D", "linewidth": 3.0}
@@ -282,13 +281,17 @@ def plot_superiority_bar_summary(
     ]
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 9), dpi=300)
-    fig.patch.set_facecolor('#FFFFFF')
-    colors = ['#94A3B8', '#F59E0B', '#3B82F6', '#DC2626']
+    model_color_map = {
+        "Pure-CNN (无物理卷积网络)": "#F59E0B",
+        "Pure-Swin (无物理消融对照)": "#3B82F6",
+        "Swin-Ocean-PINN (本项目模型)": "#DC2626"
+    }
+    bar_colors = [model_color_map.get(m, '#94A3B8') for m in models]
 
     for idx, (metric_key, metric_label, direction) in enumerate(metrics):
         ax = axes[idx // 2, idx % 2]
         vals = [benchmark_data[m].get(metric_key, 0.0) for m in models]
-        bars = ax.bar(models, vals, color=colors[:n_models], width=0.55, edgecolor='#334155', linewidth=0.8)
+        bars = ax.bar(models, vals, color=bar_colors, width=0.55, edgecolor='#334155', linewidth=0.8)
 
         # Highlight best
         best_val = min(vals) if direction == "lower_is_better" else max(vals)

@@ -3,11 +3,10 @@
 Comprehensive Multi-Model Academic Superiority Benchmark Script
 Pinn-Ocean (Swin-Ocean-PINN)
 
-Evaluates 4 contrasting models/methods across statistical fidelity and physical consistency:
-1. Trilinear (3-D Classical Linear Spatial Interpolation)
-2. Pure-CNN (Conventional 2-D Convolutional Network without Physics)
-3. Pure-Swin (Swin Transformer Ablation without Physics Loss)
-4. Swin-Ocean-PINN (Our Full Physics-Informed Neural Operator)
+Evaluates 3 contrasting models/methods across statistical fidelity and physical consistency:
+1. Pure-CNN (Conventional 2-D Convolutional Network without Physics)
+2. Pure-Swin (Swin Transformer Ablation without Physics Loss)
+3. Swin-Ocean-PINN (Our Full Physics-Informed Neural Operator)
 
 Computes:
 - Layered statistical errors (RMSE, MAE, R^2)
@@ -35,7 +34,7 @@ from torch.utils.data import DataLoader
 
 from configs.default_config import ModelConfig
 from pinn_ocean.models.swin_ocean_pinn import SwinOceanPINN
-from pinn_ocean.models.baselines import TrilinearBaseline3D, PureDataCNN3D, PureSwinAblation
+from pinn_ocean.models.baselines import PureDataCNN3D, PureSwinAblation
 from pinn_ocean.models.super_resolution import GLORYS3DInterpolator
 from pinn_ocean.datasets.ocean_dataset import OceanContinuousDataset
 from pinn_ocean.utils.metrics import (
@@ -161,14 +160,12 @@ def run_benchmark():
     # 4. Gather Predictions Across All Models
     all_targets_t, all_targets_s = [], []
     all_pinn_t, all_pinn_s = [], []
-    all_trilinear_t, all_trilinear_s = [], []
     all_cnn_t, all_cnn_s = [], []
     all_pure_swin_t, all_pure_swin_s = [], []
 
     z_raw = dataset.get_depth_tensor().to(device)
 
     # Instantiate Baselines
-    trilinear_bl = TrilinearBaseline3D(depths=depths, lats=lats, lons=lons)
     cnn_bl = PureDataCNN3D(in_channels=model_cfg.in_channels, hidden_dim=model_cfg.embed_dim).to(device)
     cnn_bl.eval()
 
@@ -209,18 +206,6 @@ def run_benchmark():
             all_cnn_t.append(t_cnn)
             all_cnn_s.append(s_cnn)
 
-            # Model 4: Trilinear Interpolation (from sparse in-situ float array with ~1.25° spacing)
-            stride_lat = 12
-            stride_lon = 16
-            t_sub = t_gt[:, ::stride_lat, ::stride_lon]
-            s_sub = s_gt[:, ::stride_lat, ::stride_lon]
-            sub_interp = TrilinearBaseline3D(depths=depths, lats=lats[::stride_lat], lons=lons[::stride_lon])
-            t_trilin = sub_interp.predict(t_sub, depths, lats, lons)
-            s_trilin = sub_interp.predict(s_sub, depths, lats, lons)
-            all_trilinear_t.append(t_trilin)
-            all_trilinear_s.append(s_trilin)
-
-
             print(f"  [Step {step:02d}/{len(loader):02d}] Evaluated multi-model predictions for {str(times[step-1])[:10]}")
 
     # Stack into 4D arrays: (T, D, H, W)
@@ -228,7 +213,6 @@ def run_benchmark():
     targets_s = np.array(all_targets_s)
 
     models_data = {
-        "Trilinear (三维空间插值)": (np.array(all_trilinear_t), np.array(all_trilinear_s)),
         "Pure-CNN (无物理卷积网络)": (np.array(all_cnn_t), np.array(all_cnn_s)),
         "Pure-Swin (无物理消融对照)": (np.array(all_pure_swin_t), np.array(all_pure_swin_s)),
         "Swin-Ocean-PINN (本项目模型)": (np.array(all_pinn_t), np.array(all_pinn_s))
