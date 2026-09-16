@@ -36,6 +36,13 @@ class PhysicsConfig:
     # Seawater stratification stability and anti-inversion constraint (d_rho / dz >= 0)
     enable_density_loss: bool = True
     
+    # Loss weight multipliers
+    w_sla: float = 5.0
+    w_surf: float = 1.0
+    w_grad: float = 0.2
+    w_mld: float = 1.0
+    w_stab: float = 0.2
+
     # Adaptive multi-objective loss balance (homoscedastic uncertainty weighting)
     init_log_var_data: float = 0.0
     init_log_var_phy: float = 0.0
@@ -45,12 +52,15 @@ class PhysicsConfig:
 @dataclass
 class TrainConfig:
     batch_size: int = 4
-    num_epochs: int = 200
+    num_epochs: int = 300
     learning_rate: float = 3e-4
+    min_lr: float = 1e-5
     weight_decay: float = 1e-4
+    scheduler_type: str = "cosine"  # 'cosine' or 'plateau'
     lr_decay_factor: float = 0.5
-    lr_decay_patience: int = 8
-    sampling_points: int = 800  # Spatial random sampling points per batch for VRAM efficiency
+    lr_decay_patience: int = 20
+    early_stopping_patience: int = 50  # Stop if no validation improvement for 50 epochs
+    sampling_points: int = 1500  # Spatial random sampling points (-1 for all grid points)
     clip_grad_norm: float = 5.0
     checkpoint_dir: str = "checkpoints"
     save_best_only: bool = True

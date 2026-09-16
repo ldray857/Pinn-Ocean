@@ -93,6 +93,10 @@ def parse_args():
         "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu",
         help="Computing device (cuda or cpu)"
     )
+    parser.add_argument(
+        "--all", action="store_true", default=True,
+        help="Generate all 9 publication-grade figures (default: True)"
+    )
     return parser.parse_args()
 
 

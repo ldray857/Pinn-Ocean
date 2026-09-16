@@ -115,7 +115,7 @@ def run_unit_tests():
     )
     total_loss_pts, w1_pts, w2_pts = adaptive_loss_fn(loss_data_pts, loss_phy_pts)
 
-    print(f"      [Pointwise] Data Loss: {loss_data_pts.item():.5f} | Phy Loss: {loss_phy_pts.item():.5f} (Surf: {loss_dict_pts['loss_surf'].item():.5f}, SLA: {loss_dict_pts['loss_sla'].item():.5f}, Grad: {loss_dict_pts['loss_grad'].item():.5f})")
+    print(f"      [Pointwise] Data Loss: {loss_data_pts.item():.5f} | Phy Loss: {loss_phy_pts.item():.5f} (Surf: {loss_dict_pts['loss_surf'].item():.5f}, SLA: {loss_dict_pts['loss_sla'].item():.5f}, Grad: {loss_dict_pts['loss_grad'].item():.5f}, Stab: {loss_dict_pts['loss_stab'].item():.5f})")
     print(f"      [Pointwise] Adaptive Loss: {total_loss_pts.item():.5f}")
 
     optimizer = optim.AdamW(list(model.parameters()) + list(adaptive_loss_fn.parameters()), lr=1e-3)
@@ -151,6 +151,17 @@ def run_unit_tests():
     dir_info = calc_density_inversion_rate(t_synth_pred, s_synth_pred, synth_depths)
     assert "inversion_rate_percent" in dir_info
     print(f"      Density Inversion Rate: {dir_info['inversion_rate_percent']:.3f}% ({dir_info['total_inversions']}/{dir_info['total_evaluated']})")
+
+    # Test Brunt-Väisälä buoyancy frequency metrics
+    from pinn_ocean.utils.metrics import calc_buoyancy_frequency_metrics, calc_multilevel_density_inversion_rate
+    n2_info = calc_buoyancy_frequency_metrics(t_synth_pred, s_synth_pred, synth_depths, true_temp=t_synth_true, true_sal=s_synth_true)
+    assert "cir_pred_percent" in n2_info and "pycnocline_depth_rmse" in n2_info
+    print(f"      Brunt-Vaisala CIR: {n2_info['cir_pred_percent']:.3f}% | Pycnocline Depth RMSE: {n2_info['pycnocline_depth_rmse']:.2f} m")
+
+    # Test Multi-level Potential Density Inversion Rate
+    ml_info = calc_multilevel_density_inversion_rate(t_synth_pred, s_synth_pred, synth_depths)
+    assert "overall_inversion_rate_percent" in ml_info
+    print(f"      Multi-level Density Inversion Rate: {ml_info['overall_inversion_rate_percent']:.3f}%")
 
     # Test temperature monotonicity violation
     mono_info = calc_temp_monotonicity_violation(t_synth_pred, synth_depths, start_depth=100.0)

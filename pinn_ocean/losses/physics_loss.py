@@ -11,7 +11,7 @@ Implements multi-objective ocean physics constraints:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..utils.teos10 import approx_seawater_density
+from ..utils.teos10 import approx_seawater_density, calc_buoyancy_frequency_n2
 
 
 class OceanPhysicsLoss(nn.Module):
@@ -23,7 +23,7 @@ class OceanPhysicsLoss(nn.Module):
     4. Mixed Layer Isothermal Regularization: L_mld = mean(relu(|dT/dz| - 0.02)) for z <= 30m
     5. Stratification Stability: L_stab = mean(softplus(- d(rho)/dz * scale))
     """
-    def __init__(self, w_sla=5.0, w_surf=2.0, w_grad=1.0, w_mld=2.0, w_stab=0.2,
+    def __init__(self, w_sla=5.0, w_surf=1.0, w_grad=0.2, w_mld=1.0, w_stab=0.2,
                  temp_grad_threshold=0.005, enable_density=True):
         super().__init__()
         self.w_sla = w_sla
@@ -90,19 +90,21 @@ class OceanPhysicsLoss(nn.Module):
             total_loss = total_loss + self.w_surf * loss_surf
         loss_dict['loss_surf'] = loss_surf
 
+        z_1d = (z_raw[0, 0, :, 0] if z_raw.dim() == 4 else z_raw).squeeze() if z_raw is not None else None
+
         # 2. Dynamic Height (SLA) Physical Steric Integration Constraint
         loss_sla = torch.tensor(0.0, device=device)
         if (surface_obs is not None and 'sla' in surface_obs and
-                stats is not None and z_raw is not None and D > 1):
+                stats is not None and z_1d is not None and D > 1):
             t_phys = temp_pts * stats['std_t'] + stats['mean_t']
             s_phys = sal_pts * stats['std_s'] + stats['mean_s']
-            depth_phys = z_raw.view(1, 1, D).to(device)
+            depth_phys = z_1d.view(1, 1, D).to(device)
 
             rho = approx_seawater_density(s_phys, t_phys, depth_phys)
             rho_ref = rho.mean(dim=1, keepdim=True)  # (B, 1, D)
             rho_prime = rho - rho_ref
 
-            dz = (z_raw[1:] - z_raw[:-1]).view(1, 1, D - 1).to(device)
+            dz = (z_1d[1:] - z_1d[:-1]).view(1, 1, D - 1).to(device)
             rho_mid = 0.5 * (rho_prime[:, :, :-1] + rho_prime[:, :, 1:])
             dyn_height = - torch.sum(rho_mid * dz, dim=-1) / 1025.0  # (B, S) in meters
 
@@ -115,36 +117,44 @@ class OceanPhysicsLoss(nn.Module):
         loss_grad = torch.tensor(0.0, device=device)
         loss_mld = torch.tensor(0.0, device=device)
         loss_stab = torch.tensor(0.0, device=device)
-        if y_target is not None and z_raw is not None and D > 1:
-            t_gt = y_target[:, 0, :, :].permute(0, 2, 1)  # (B, S, D)
-            s_gt = y_target[:, 1, :, :].permute(0, 2, 1)  # (B, S, D)
+        if y_target is not None and z_1d is not None and D > 1:
+            y_tgt_flat = y_target.view(B, C, D, -1) if y_target.dim() == 5 else y_target
+            t_gt = y_tgt_flat[:, 0, :, :].permute(0, 2, 1)  # (B, S, D)
+            s_gt = y_tgt_flat[:, 1, :, :].permute(0, 2, 1)  # (B, S, D)
 
-            dz_100 = ((z_raw[1:] - z_raw[:-1]) / 100.0).view(1, 1, D - 1).to(device)
+            dz_100 = ((z_1d[1:] - z_1d[:-1]) / 100.0).view(1, 1, D - 1).to(device)
+            dz_stable = torch.clamp(dz_100, min=0.05)
 
-            pred_dt = (temp_pts[:, :, 1:] - temp_pts[:, :, :-1]) / dz_100
-            pred_ds = (sal_pts[:, :, 1:] - sal_pts[:, :, :-1]) / dz_100
-            gt_dt = (t_gt[:, :, 1:] - t_gt[:, :, :-1]) / dz_100
-            gt_ds = (s_gt[:, :, 1:] - s_gt[:, :, :-1]) / dz_100
+            pred_dt = (temp_pts[:, :, 1:] - temp_pts[:, :, :-1]) / dz_stable
+            pred_ds = (sal_pts[:, :, 1:] - sal_pts[:, :, :-1]) / dz_stable
+            gt_dt = (t_gt[:, :, 1:] - t_gt[:, :, :-1]) / dz_stable
+            gt_ds = (s_gt[:, :, 1:] - s_gt[:, :, :-1]) / dz_stable
 
-            loss_grad_t = F.mse_loss(pred_dt, gt_dt)
-            loss_grad_s = F.mse_loss(pred_ds, gt_ds)
+            loss_grad_t = F.smooth_l1_loss(pred_dt, gt_dt)
+            loss_grad_s = F.smooth_l1_loss(pred_ds, gt_ds)
             loss_grad = loss_grad_t + 2.0 * loss_grad_s
             total_loss = total_loss + self.w_grad * loss_grad
 
             # 4. Mixed Layer Isothermal Regularization (MLD Flatness in upper 30m)
             # Ocean mixed layer is well-mixed: penalizes boundary overshoot or curvature
             if stats is not None:
-                mld_mask = z_raw[:-1] <= 30.0
+                mld_mask = z_1d[:-1] <= 30.0
                 if mld_mask.any():
-                    dz_mld = (z_raw[1:] - z_raw[:-1])[mld_mask].view(1, 1, -1).to(device)
+                    dz_mld = (z_1d[1:] - z_1d[:-1])[mld_mask].view(1, 1, -1).to(device)
                     dt_phys_mld = torch.abs(temp_pts[:, :, 1:][:, :, mld_mask] - temp_pts[:, :, :-1][:, :, mld_mask]) * stats['std_t'] / dz_mld
                     loss_mld = torch.mean(F.relu(dt_phys_mld - 0.02))
                     total_loss = total_loss + self.w_mld * loss_mld
 
-            # 5. Smooth Seawater Stratification Stability (Anti-Inversion)
-            if self.enable_density and stats is not None:
-                d_rho_dz = - 0.25 * (pred_dt * stats['std_t']) + 0.75 * (pred_ds * stats['std_s'])
-                loss_stab = torch.mean(F.softplus(- d_rho_dz * 10.0))
+            # 5. Exact Brunt-Väisälä Buoyancy Frequency Stratification Stability (N^2 >= 0)
+            if self.enable_density and stats is not None and D > 1:
+                t_phys = temp_pts * stats['std_t'] + stats['mean_t']
+                s_phys = sal_pts * stats['std_s'] + stats['mean_s']
+                n2_vals = calc_buoyancy_frequency_n2(s_phys, t_phys, z_1d, depth_axis=-1)
+                # In the ocean, stable stratification has N^2 in range 1e-5 to 1e-4 s^-2.
+                # Scaling by 1e4 maps typical N^2 to order 0.1 ~ 1.0.
+                # Softplus(- 1e4 * N^2) provides a smooth penalty for N^2 < 0 (convective instability),
+                # and asymptotically approaches 0 for N^2 >= 0 (strictly permitting N^2 ~ 0 in mixed layer).
+                loss_stab = torch.mean(F.softplus(- n2_vals * 1e4))
                 total_loss = total_loss + self.w_stab * loss_stab
 
         loss_dict['loss_grad'] = loss_grad

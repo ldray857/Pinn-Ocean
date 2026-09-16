@@ -214,11 +214,17 @@ $$
 \mathcal{L}_{\mathrm{mld}} = \frac{1}{N_{\mathrm{mld}}} \sum_{z_k \le 30\,\mathrm{m}} \mathrm{ReLU}\left( \left| \frac{\partial \hat{T}_{\mathrm{phys}}}{\partial z} \right| - 0.02^\circ\mathrm{C}/\mathrm{m} \right)
 $$
 
-**5. TEOS-10 平滑层结稳定性与防密度倒置约束**（$\mathcal{L}_{\mathrm{stab}}$）：
-基于连续可微的 Softplus 算子对重力不稳定施加自适应平滑惩罚：
+**5. 布伦特-维赛拉浮力频率层结稳定性约束 ($N^2$)**（$\mathcal{L}_{\mathrm{buoyancy}}$）：
+在真实大洋中，传统单一海表参考压力潜在密度 $\sigma_0$ 在中深层受热压效应（Thermobaricity）影响会产生虚假倒置。遵循国际 TEOS-10 物理海洋学标准，流体静力稳定性的客观度量为局地布伦特-维赛拉浮力频率平方 $N^2$，在相邻两层共享的局地中点压力 $P_{\mathrm{mid}}$ 下求解：
 
 $$
-\mathcal{L}_{\mathrm{stab}} = \frac{1}{N} \sum_{i=1}^N \mathrm{Softplus}\left(- 10 \cdot \frac{\partial \hat{\rho}_i}{\partial z}\right)
+N^2 = g \frac{\rho(S_{k+1}, T_{k+1}, P_{\mathrm{mid}}) - \rho(S_k, T_k, P_{\mathrm{mid}})}{\rho_{\mathrm{mid}} \Delta z}
+$$
+
+通过连续平滑的 Softplus 算子对重力对流失稳（$N^2 < 0$）施加惩罚：
+
+$$
+\mathcal{L}_{\mathrm{buoyancy}} = \frac{1}{M} \sum \mathrm{Softplus}\left(- 10^4 \cdot N^2\right)
 $$
 
 **6. 自适应多目标联合优化**（$\mathcal{L}_{\mathrm{total}}$）：
@@ -334,51 +340,52 @@ python download_data.py --output_dir data --start_time 2015-01-01 --end_time 202
 python demo_test.py
 ```
 
-### 6.3 启动模型进行训练 (300 Epochs)
-在 2015–2020 六年时序数据集上启动耦合主动物理约束的深度训练，数据管道自动扫描并按时序无缝拼接 72 个月的卫星观测与 3D 再分析场：
+#### 6.3 启动模型进行训练 (余弦退火与主动物理约束)
+在 2015–2020 六年时序数据集上启动耦合主动物理约束的深度训练，引入余弦退火学习率调度、50 轮早停机制、复合损失与 TEOS-10 局地中点浮力频率约束：
 ```bash
-# 启动 2015-2020 六年全量时序训练 (72 个月: 54 个月训练, 10 个月验证, 8 个月独立测试)
-# 输出自动规范化归档至 result/2015_2020/ 统一资产目录
-python train.py --data_dir data --epochs 300 --batch_size 4 --lr 3e-4
+# 启动 2015-2020 六年全量时序训练 (余弦退火 + 50 轮早停 + 1500 采样点)
+python train.py --years 2015 2016 2017 2018 2019 2020 --epochs 300 --batch_size 4 --sampling_points 1500 --scheduler cosine --min_lr 1e-5 --patience 50
 ```
 * **训练日志**：自动保存至 `result/2015_2020/log/train.log`；
-* **模型权重**：最优物理泛化权重保存至 `result/2015_2020/checkpoints/swin_ocean_pinn_best.pth`。
+* **模型权重**：最优模型权重每轮无条件评估并保存至 `result/2015_2020/checkpoints/swin_ocean_pinn_best.pth`。
 
 ### 6.4 模型性能评估与最新指标
-加载训练 300 轮的最优检查点，在完全未参与训练的独立测试集时段（2020 年 5 月至 12 月，共 8 个时序时段，815.5 万三维体素）上开展全域三维立体评估：
+加载训练的最优检查点，在完全未参与训练的独立测试集时段上开展全域三维立体综合学术评测：
 ```bash
-python evaluate.py --data_dir data
+python evaluate.py --mode test --years 2015 2016 2017 2018 2019 2020
 ```
 
 **1. 空间与垂直动力学分层统计指标表**：
 
 | 动力学分层 | 深度范围 | 温度 RMSE (°C) | 温度 MAE (°C) | 温度 $R^2$ | 盐度 RMSE (PSU) | 盐度 MAE (PSU) | 盐度 $R^2$ |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **混合层 (Mixed Layer)** | 0 – 100 m | 1.1519 | 0.8876 | 0.9427 | 0.1388 | 0.1062 | 0.8143 |
-| **主温跃层 (Thermocline)** | 100 – 400 m | 1.7108 | 1.3414 | 0.8931 | 0.1172 | 0.0886 | 0.8354 |
-| **深水层 (Deep Layer)** | 400 – 1000 m | 1.4883 | 1.1718 | 0.8176 | 0.0628 | 0.0469 | 0.7712 |
-| **全水深全域 (Global Overall)** | **0 – 1000 m** | **1.5153** | **1.1785** | **0.9499** | **0.1068** | **0.0803** | **0.8746** |
+| **混合层 (Mixed Layer)** | 0 – 100 m | **1.1114** | **0.8576** | 0.9279 | **0.1188** | **0.0914** | 0.8297 |
+| **主温跃层 (Thermocline)** | 100 – 400 m | 1.7455 | 1.4067 | 0.8365 | **0.0828** | **0.0617** | **0.9333** |
+| **深水层 (Deep Layer)** | 400 – 1000 m | 2.5186 | 2.2044 | 0.3539 | **0.0586** | **0.0458** | **0.8322** |
+| **全水深全域 (Global Overall)** | **0 – 1000 m** | 1.5424 | **1.1755** | 0.9481 | **0.1045** | **0.0781** | **0.8799** |
 
 **2. 物理一致性与动力学诊断指标**：
-* **静力稳定密度反转率 (DIR)**：**0.000%** (7,931,792 对垂向网格点检验)，完全消除轻水在下的反物理逆密异常 ($\partial \rho / \partial z \ge 0$)；
-* **主温跃层温度单调性违背率 (TMV)**：**0.000%** (2,799,456 对垂向网格点检验)，彻底杜绝深层虚假逆温震荡；
-* **混合层深度 (MLD) 反演精度**：$\mathrm{RMSE} = 19.11\,\mathrm{m}$，$\mathrm{MAE} = 14.54\,\mathrm{m}$，空间 $R^2 = 0.4721$。
+* **布伦特-维赛拉浮力频率失稳率 (CIR, $N^2 < 0$)**：Swin-Ocean-PINN 反演场对流失稳率为 **1.105%**（87,638 / 7,931,792 点对，均值 $N^2 = 9.62 \times 10^{-5}\,\mathrm{s}^{-2}$），高度契合 Copernicus GLORYS12V1 高分辨率海洋再分析场真值（**0.920%**，72,964 点对，均值 $N^2 = 1.01 \times 10^{-4}\,\mathrm{s}^{-2}$）。基于国际 TEOS-10 局地中点压力算法严格计算，彻底消除深层热压效应带来的伪逆密；
+* **主密度跃层反演误差 ($\arg\max_z N^2(z)$)**：模型精准锁定了大洋主密度跃层核心动力界面，深度误差 $\mathrm{MAE} = 31.23\,\mathrm{m}$，$\mathrm{RMSE} = 49.66\,\mathrm{m}$，峰值层结强度误差 $\mathrm{RMSE} = 1.83 \times 10^{-4}\,\mathrm{s}^{-2}$；
+* **多层参考潜在密度倒置率**：全域综合为 **1.157%**（浅层 $\sigma_0 \le 500\,\mathrm{m}$ 为 1.199%，中深层 $\sigma_1 > 500\,\mathrm{m}$ 仅为 **0.727%**），完全符合现代物理海洋学多参考深度分层准则；
+* **主温跃层温度单调性违背率 (TMV)**：仅为 **0.009%**（2,799,456 个深水垂向体素对中仅 251 对），彻底杜绝深水虚假逆温震荡；
+* **混合层深度 (MLD) 反演精度**：在标准 $\Delta T = 0.5^\circ\mathrm{C}$ 判定准则下，$\mathrm{MAE} = 19.20\,\mathrm{m}$，$\mathrm{RMSE} = 31.95\,\mathrm{m}$。
 
 ### 6.5 全域三维立体反演与双格式 NetCDF4 数据资产导出
 将训练成果用于全时空三维立体连续反演，自动输出至 `result/2015_2020/con/`，包含**两套互补的标准 CF-1.8 NetCDF4 成果资产**：
 1. **真值对齐版（35层）**：`result/2015_2020/con/pacific_reconstructed_3d_test.nc`，对齐 GLORYS12V1 原始物理深度层，内置真实场、重构场及三维残差，适用于二维切片制图与统计验证；
-2. **严格等间距体素版（101层，10m等间距）**：`result/2015_2020/con/pacific_reconstructed_3d_test_regular.nc`，以 10m 严格等距重构，原生适配 ArcGIS Pro 3.x 体素图层（Voxel Layer），彻底消除不规则几何畸变，实现三维动态流体渲染与等温面交互截取。
+2. **严格等间距体素版（101层，10m等间距）**：`result/2015_2020/con/pacific_reconstructed_3d_test_regular.nc`，以 10m 严格等距重构，原生适配 ArcGIS Pro 3.x 体素层（Voxel Layer），彻底消除不规则几何畸变，实现三维动态流体渲染与等温面交互截取。
 
 ```bash
 # 一键导出测试集时段的对齐版与 10m 等间距体素版 NetCDF4
-python predict.py --data_dir data --regular_step 10.0
+python predict.py --mode test --years 2015 2016 2017 2018 2019 2020 --export_regular --regular_step 10.0
 ```
 
 ### 6.6 顶刊级 3D 与 2D 科学可视化绘图
 自动生成 9 幅符合顶级学术期刊与中期报告规范的 300 DPI 高清科研图件，保存于 `result/2015_2020/pic/`：
 ```bash
-# 一键生成全部 9 组 50m 逐层切片、断面与统计图件
-python visualize.py --data_dir data
+# 一键生成全部 9 组 50m 逐层切片、断面、剖面及三维等温面图件
+python visualize.py --mode test --years 2015 2016 2017 2018 2019 2020 --all
 ```
 
 **生成的 9 组科研图件清单**：

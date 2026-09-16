@@ -64,3 +64,116 @@ def approx_seawater_density(sal, temp, depth):
     # In-situ density under pressure
     rho = rho_0 / (1.0 - p / torch.clamp(k, min=1e4))
     return rho
+
+
+def calc_potential_density_sigma(sal, temp, p_ref=0.0):
+    """
+    Computes potential density anomaly (kg/m^3) referenced to pressure p_ref:
+    sigma = rho(S, T, p_ref) - 1000.0
+    
+    Args:
+        sal: Salinity in PSU / g/kg, torch.Tensor or numpy.ndarray
+        temp: Temperature in deg C, matching type
+        p_ref: Reference pressure in dbar (e.g. 0.0 for sigma_0, 1000.0 for sigma_1)
+        
+    Returns:
+        sigma: Potential density anomaly in kg/m^3
+    """
+    is_numpy = not isinstance(sal, torch.Tensor)
+    if is_numpy:
+        sal_t = torch.from_numpy(sal).float()
+        temp_t = torch.from_numpy(temp).float()
+    else:
+        sal_t = sal
+        temp_t = temp
+
+    # Convert p_ref in dbar to equivalent depth in meters
+    z_ref = torch.tensor(p_ref / 1.019716e-1, dtype=sal_t.dtype, device=sal_t.device)
+    rho_ref = approx_seawater_density(sal_t, temp_t, z_ref)
+    sigma = rho_ref - 1000.0
+
+    if is_numpy:
+        return sigma.detach().cpu().numpy()
+    return sigma
+
+
+def calc_buoyancy_frequency_n2(sal, temp, depth, g=9.80665, depth_axis=-1):
+    """
+    Computes the exact Brunt-Väisälä buoyancy frequency squared N^2 (s^-2)
+    using the international TEOS-10 local midpoint pressure method.
+    
+    N^2 = g * (rho_lower - rho_upper) / (rho_mid * dz)
+    where rho_upper and rho_lower are both evaluated at the shared local midpoint pressure.
+    This strictly eliminates fictitious density inversions caused by thermobaricity / reference pressure biases.
+    
+    Args:
+        sal: Salinity in PSU / g/kg, torch.Tensor or numpy.ndarray
+        temp: Temperature in deg C, matching type
+        depth: 1D depth array/tensor in meters
+        g: Gravitational acceleration (default: 9.80665 m/s^2)
+        depth_axis: Axis along which depth is oriented (default: -1 or auto-detected)
+        
+    Returns:
+        N2: Buoyancy frequency squared in s^-2, shape matches inputs with depth dimension (D - 1)
+    """
+    is_numpy = not isinstance(sal, torch.Tensor)
+    if is_numpy:
+        sal_t = torch.from_numpy(sal).float()
+        temp_t = torch.from_numpy(temp).float()
+    else:
+        sal_t = sal
+        temp_t = temp
+
+    if not isinstance(depth, torch.Tensor):
+        depth_t = torch.tensor(depth, dtype=sal_t.dtype, device=sal_t.device)
+    else:
+        depth_t = depth.to(device=sal_t.device, dtype=sal_t.dtype)
+
+    D = len(depth_t)
+    # Determine depth axis
+    if depth_axis is not None and depth_axis != -1:
+        axis = depth_axis
+    elif sal_t.shape[-1] == D:
+        axis = sal_t.dim() - 1
+    else:
+        # Auto-detect which axis matches depth dimension D
+        axis = sal_t.dim() - 1
+        for d_idx, s_val in enumerate(sal_t.shape):
+            if s_val == D:
+                axis = d_idx
+                break
+
+    # Extract upper and lower slices along depth axis
+    upper_slice = [slice(None)] * sal_t.dim()
+    upper_slice[axis] = slice(0, D - 1)
+    lower_slice = [slice(None)] * sal_t.dim()
+    lower_slice[axis] = slice(1, D)
+
+    temp_upper = temp_t[tuple(upper_slice)]
+    temp_lower = temp_t[tuple(lower_slice)]
+    sal_upper = sal_t[tuple(upper_slice)]
+    sal_lower = sal_t[tuple(lower_slice)]
+
+    # Compute midpoint depth and dz
+    z_mid = 0.5 * (depth_t[:-1] + depth_t[1:])
+    dz = depth_t[1:] - depth_t[:-1]
+
+    # Reshape z_mid and dz to broadcast across other dimensions
+    view_shape = [1] * sal_t.dim()
+    view_shape[axis] = D - 1
+    z_mid_view = z_mid.view(view_shape)
+    dz_view = dz.view(view_shape)
+
+    # Evaluate density of both parcels at shared midpoint pressure
+    rho_upper = approx_seawater_density(sal_upper, temp_upper, z_mid_view)
+    rho_lower = approx_seawater_density(sal_lower, temp_lower, z_mid_view)
+    rho_mid = 0.5 * (rho_upper + rho_lower)
+
+    # N^2 = g * (rho_lower - rho_upper) / (rho_mid * dz)
+    # When lower water is denser under identical pressure, rho_lower > rho_upper => N^2 > 0 (stable)
+    n2 = g * (rho_lower - rho_upper) / (torch.clamp(rho_mid, min=900.0) * torch.clamp(dz_view, min=0.1))
+
+    if is_numpy:
+        return n2.detach().cpu().numpy()
+    return n2
+

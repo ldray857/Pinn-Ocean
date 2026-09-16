@@ -19,7 +19,8 @@ from pinn_ocean.utils.metrics import (
     calc_rmse, calc_mae, calc_r2, calc_mld,
     calc_layer_metrics, calc_regime_metrics,
     calc_density_inversion_rate, calc_temp_monotonicity_violation,
-    calc_domain_mld_metrics
+    calc_domain_mld_metrics, calc_buoyancy_frequency_metrics,
+    calc_multilevel_density_inversion_rate
 )
 from pinn_ocean.utils import get_result_dirs
 
@@ -148,7 +149,10 @@ def evaluate():
     layer_metrics_s = calc_layer_metrics(all_preds_s, all_targets_s, depths)
 
     # 4. Compute physical consistency & stability metrics
-    print("\nEvaluating oceanographic physics consistency (TEOS-10 & Monotonicity)...")
+    print("\nEvaluating oceanographic physics consistency (TEOS-10, N^2 & Stability)...")
+    n2_metrics = calc_buoyancy_frequency_metrics(all_preds_t, all_preds_s, depths, true_temp=all_targets_t, true_sal=all_targets_s)
+    ml_pred = calc_multilevel_density_inversion_rate(all_preds_t, all_preds_s, depths, split_depth=500.0)
+    ml_true = calc_multilevel_density_inversion_rate(all_targets_t, all_targets_s, depths, split_depth=500.0)
     dir_pred = calc_density_inversion_rate(all_preds_t, all_preds_s, depths)
     dir_true = calc_density_inversion_rate(all_targets_t, all_targets_s, depths)
     mono_pred = calc_temp_monotonicity_violation(all_preds_t, depths, start_depth=100.0)
@@ -178,14 +182,22 @@ def evaluate():
 
     summary_lines.extend([
         "------------------------------------------------------------------",
-        " 3. 物理一致性与层化稳定性指标 (PINN Physical Consistency):",
-        f"    - 密度倒置率 (Density Inversion Rate, DIR):",
+        " 3. 物理一致性与层化稳定性指标 (PINN Physical Consistency & Stratification):",
+        "    - 布伦特-维赛拉浮力频率失稳率 (Brunt-Väisälä Convective Instability Rate, CIR, N^2 < 0):",
+        f"        Swin-Ocean-PINN : {n2_metrics['cir_pred_percent']:.3f}% ({n2_metrics['pred_inversions']}/{n2_metrics['total_evaluated']}) | 均值 N^2: {n2_metrics['mean_n2_pred']:.2e} s^-2",
+        f"        GLORYS12V1 真值  : {n2_metrics.get('cir_true_percent', 0.0):.3f}% ({n2_metrics.get('true_inversions', 0)}/{n2_metrics['total_evaluated']}) | 均值 N^2: {n2_metrics.get('mean_n2_true', 0.0):.2e} s^-2",
+        "    - 密度跃层反演误差 (Pycnocline Depth Error, argmax_z N^2):",
+        f"        Pyc-RMSE: {n2_metrics.get('pycnocline_depth_rmse', 0.0):.2f} m | Pyc-MAE: {n2_metrics.get('pycnocline_depth_mae', 0.0):.2f} m | 峰值强度 RMSE: {n2_metrics.get('pycnocline_peak_rmse', 0.0):.2e} s^-2",
+        "    - 多层参考潜在密度倒置率 (Multi-Level Potential Density, σ0<=500m / σ1>500m):",
+        f"        Swin-Ocean-PINN : {ml_pred['overall_inversion_rate_percent']:.3f}% (浅层 σ0: {ml_pred['sigma0_inversion_rate_percent']:.3f}%, 深层 σ1: {ml_pred['sigma1_inversion_rate_percent']:.3f}%)",
+        f"        GLORYS12V1 真值  : {ml_true['overall_inversion_rate_percent']:.3f}% (浅层 σ0: {ml_true['sigma0_inversion_rate_percent']:.3f}%, 深层 σ1: {ml_true['sigma1_inversion_rate_percent']:.3f}%)",
+        "    - 原位密度倒置率 (In-situ Density Inversion Rate, DIR):",
         f"        Swin-Ocean-PINN : {dir_pred['inversion_rate_percent']:.3f}% ({dir_pred['total_inversions']}/{dir_pred['total_evaluated']})",
         f"        GLORYS12V1 真值  : {dir_true['inversion_rate_percent']:.3f}% ({dir_true['total_inversions']}/{dir_true['total_evaluated']})",
-        f"    - 位温单调性违规率 (dT/dz > 0 在 z>=100m 深水区):",
+        "    - 位温单调性违规率 (dT/dz > 0 在 z>=100m 深水区):",
         f"        Swin-Ocean-PINN : {mono_pred['violation_rate_percent']:.3f}% ({mono_pred['violations']}/{mono_pred['total']})",
         f"        GLORYS12V1 真值  : {mono_true['violation_rate_percent']:.3f}% ({mono_true['violations']}/{mono_true['total']})",
-        f"    - 混合层深度误差 (MLD Error, ΔT=0.5°C 阈值):",
+        "    - 混合层深度误差 (MLD Error, ΔT=0.5°C 阈值):",
         f"        MLD-RMSE: {mld_metrics['mld_rmse']:.2f} m | MLD-MAE: {mld_metrics['mld_mae']:.2f} m | MLD-R^2: {mld_metrics['mld_r2']:.4f}",
         "=================================================================="
     ])
@@ -220,6 +232,25 @@ def evaluate():
             "sal": layer_metrics_s
         },
         "physics_metrics": {
+            "buoyancy_frequency_n2": {
+                "pred_cir_percent": n2_metrics.get('cir_pred_percent', 0.0),
+                "true_cir_percent": n2_metrics.get('cir_true_percent', 0.0),
+                "pred_inversions": n2_metrics.get('pred_inversions', 0),
+                "true_inversions": n2_metrics.get('true_inversions', 0),
+                "mean_n2_pred": n2_metrics.get('mean_n2_pred', 0.0),
+                "mean_n2_true": n2_metrics.get('mean_n2_true', 0.0),
+                "pycnocline_depth_rmse_m": n2_metrics.get('pycnocline_depth_rmse', 0.0),
+                "pycnocline_depth_mae_m": n2_metrics.get('pycnocline_depth_mae', 0.0),
+                "pycnocline_peak_rmse": n2_metrics.get('pycnocline_peak_rmse', 0.0)
+            },
+            "multilevel_potential_density": {
+                "pred_overall_rate_percent": ml_pred['overall_inversion_rate_percent'],
+                "true_overall_rate_percent": ml_true['overall_inversion_rate_percent'],
+                "pred_sigma0_rate_percent": ml_pred['sigma0_inversion_rate_percent'],
+                "pred_sigma1_rate_percent": ml_pred['sigma1_inversion_rate_percent'],
+                "true_sigma0_rate_percent": ml_true['sigma0_inversion_rate_percent'],
+                "true_sigma1_rate_percent": ml_true['sigma1_inversion_rate_percent']
+            },
             "density_inversion": {
                 "pred_rate_percent": dir_pred['inversion_rate_percent'],
                 "true_rate_percent": dir_true['inversion_rate_percent'],

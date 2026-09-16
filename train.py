@@ -8,6 +8,7 @@ import os
 import argparse
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
@@ -29,10 +30,16 @@ def parse_args():
     parser.add_argument("--sst_path", type=str, default=None, help="Custom path to SST .nc file")
     parser.add_argument("--sss_path", type=str, default=None, help="Custom path to SSS .nc file")
     parser.add_argument("--wind_path", type=str, default=None, help="Custom path to Wind .nc file")
-    parser.add_argument("--epochs", type=int, default=200, help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch size for training")
-    parser.add_argument("--lr", type=float, default=3e-4, help="Initial learning rate")
-    parser.add_argument("--sampling_points", type=int, default=800, help="Number of spatial sampling points")
+    parser.add_argument("--epochs", type=int, default=300, help="Number of training epochs (default: 300)")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size for training (default: 4)")
+    parser.add_argument("--lr", type=float, default=3e-4, help="Initial learning rate (default: 3e-4)")
+    parser.add_argument("--min_lr", type=float, default=1e-5, help="Minimum learning rate for scheduler (default: 1e-5)")
+    parser.add_argument("--scheduler", type=str, default="cosine", choices=["cosine", "plateau"],
+                        help="Learning rate scheduler ('cosine' or 'plateau', default: cosine)")
+    parser.add_argument("--patience", type=int, default=50,
+                        help="Early stopping patience: stop training if no improvement after N epochs (default: 50)")
+    parser.add_argument("--sampling_points", type=int, default=1500,
+                        help="Spatial sampling points per batch (-1 or >=2501 for full grid, default: 1500)")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--output_dir", type=str, default=None, help="Optional additional directory to copy checkpoints")
     parser.add_argument("--result_dir", type=str, default="result",
@@ -121,6 +128,11 @@ def main():
 
     phy_cfg = PhysicsConfig()
     phy_loss_fn = OceanPhysicsLoss(
+        w_sla=phy_cfg.w_sla,
+        w_surf=phy_cfg.w_surf,
+        w_grad=phy_cfg.w_grad,
+        w_mld=phy_cfg.w_mld,
+        w_stab=phy_cfg.w_stab,
         temp_grad_threshold=phy_cfg.temp_grad_threshold,
         enable_density=phy_cfg.enable_density_loss
     ).to(device)
@@ -137,11 +149,18 @@ def main():
         {'params': adaptive_loss_fn.parameters(), 'lr': 1e-3}
     ])
 
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=8, min_lr=1e-6
-    )
+    if args.scheduler == "cosine":
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.epochs, eta_min=args.min_lr
+        )
+    else:
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min', factor=0.5, patience=max(10, args.patience // 3), min_lr=args.min_lr
+        )
 
     best_val_loss = float('inf')
+    best_epoch = 0
+    no_improve_epochs = 0
 
     # 3. Training Loop
     for epoch in range(1, args.epochs + 1):
@@ -159,30 +178,41 @@ def main():
             B_curr = x_8ch.shape[0]
             D_curr = z_raw.shape[0]
 
-            # Random spatial sampling to maintain efficient VRAM footprint
+            # Spatial sampling handling (supports full grid if sampling_points <= 0 or >= total_points)
             total_points = y_3d.shape[3] * y_3d.shape[4]
-            sample_idx = torch.randperm(total_points)[:args.sampling_points].to(device)
-
-            # Pointwise z coordinate tensor for exact spatial-depth Autograd derivatives
-            z_pts = z_raw.view(1, 1, D_curr, 1).repeat(B_curr, args.sampling_points, 1, 1).requires_grad_(True)
+            if 0 < args.sampling_points < total_points:
+                sample_idx = torch.randperm(total_points)[:args.sampling_points].to(device)
+                z_pts = z_raw.view(1, 1, D_curr, 1).repeat(B_curr, args.sampling_points, 1, 1).requires_grad_(True)
+                preds = model(x_8ch, z_pts, sample_idx=sample_idx)
+                y_target = y_3d.view(B_curr, 2, D_curr, -1)[:, :, :, sample_idx]
+                surface_obs = {
+                    'sst': x_8ch[:, 0].flatten(1)[:, sample_idx],
+                    'sla': x_8ch[:, 1].flatten(1)[:, sample_idx],
+                    'sss': x_8ch[:, 2].flatten(1)[:, sample_idx]
+                }
+            else:
+                sample_idx = None
+                z_pts = z_raw.view(1, 1, D_curr, 1).repeat(B_curr, total_points, 1, 1).requires_grad_(True)
+                preds = model(x_8ch, z_pts, sample_idx=None)
+                y_target = y_3d
+                surface_obs = {
+                    'sst': x_8ch[:, 0].flatten(1),
+                    'sla': x_8ch[:, 1].flatten(1),
+                    'sss': x_8ch[:, 2].flatten(1)
+                }
 
             optimizer.zero_grad()
 
-            # Forward pass on sampled points
-            preds = model(x_8ch, z_pts, sample_idx=sample_idx)
-            y_target = y_3d.view(B_curr, 2, D_curr, -1)[:, :, :, sample_idx]
+            # 1. Decoupled data-driven fidelity loss (MSE + Smooth L1 for sharp thermocline convergence)
+            loss_t_mse = mse_loss_fn(preds[:, 0], y_target[:, 0])
+            loss_t_l1 = F.smooth_l1_loss(preds[:, 0], y_target[:, 0])
+            loss_t = loss_t_mse + 0.5 * loss_t_l1
 
-            # 1. Decoupled data-driven fidelity loss
-            loss_t = mse_loss_fn(preds[:, 0], y_target[:, 0])
-            loss_s = mse_loss_fn(preds[:, 1], y_target[:, 1])
+            loss_s_mse = mse_loss_fn(preds[:, 1], y_target[:, 1])
+            loss_s_l1 = F.smooth_l1_loss(preds[:, 1], y_target[:, 1])
+            loss_s = loss_s_mse + 0.5 * loss_s_l1
+
             loss_data = loss_t + 2.0 * loss_s
-
-            # Extract corresponding sampled surface observations for physics constraints
-            surface_obs = {
-                'sst': x_8ch[:, 0].flatten(1)[:, sample_idx],
-                'sla': x_8ch[:, 1].flatten(1)[:, sample_idx],
-                'sss': x_8ch[:, 2].flatten(1)[:, sample_idx]
-            }
 
             # 2. Multi-objective active physics loss
             loss_phy, loss_dict = phy_loss_fn(
@@ -198,8 +228,8 @@ def main():
             optimizer.step()
 
             train_data_loss_sum += loss_data.item()
-            train_t_loss_sum += loss_t.item()
-            train_s_loss_sum += loss_s.item()
+            train_t_loss_sum += loss_t_mse.item()
+            train_s_loss_sum += loss_s_mse.item()
             train_phy_loss_sum += loss_phy.item()
 
         # Validation step
@@ -229,41 +259,74 @@ def main():
         avg_val_t = val_t_sum / n_val_batches
         avg_val_s = val_s_sum / n_val_batches
 
-        scheduler.step(avg_val_mse)
+        # Step LR Scheduler
+        if args.scheduler == "cosine":
+            scheduler.step()
+        else:
+            scheduler.step(avg_val_mse)
+        curr_lr = optimizer.param_groups[0]['lr']
 
-        if epoch % 5 == 0 or epoch == 1:
+        # Checkpoint evaluation on EVERY epoch
+        is_best = False
+        save_path_tag = os.path.join(res_dirs['ckpt_dir'], "swin_ocean_pinn_best.pth")
+        if avg_val_mse < best_val_loss - 1e-5:
+            best_val_loss = avg_val_mse
+            best_epoch = epoch
+            no_improve_epochs = 0
+            is_best = True
+
+            ckpt_data = {
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'adaptive_loss_state_dict': adaptive_loss_fn.state_dict(),
+                'val_loss': best_val_loss,
+                'stats': train_dataset.stats,
+                'tag': res_dirs['tag']
+            }
+            torch.save(ckpt_data, save_path_tag)
+            if args.output_dir:
+                save_path_legacy = os.path.join(args.output_dir, "swin_ocean_pinn_best.pth")
+                torch.save(ckpt_data, save_path_legacy)
+        else:
+            no_improve_epochs += 1
+
+        # Periodic logging and best checkpoint notification
+        if epoch % 5 == 0 or epoch == 1 or is_best or no_improve_epochs >= args.patience:
             log_line = (
-                f"Epoch [{epoch:03d}/{args.epochs}] | "
+                f"Epoch [{epoch:03d}/{args.epochs}] | LR: {curr_lr:.2e} | "
                 f"Train MSE (T/S): {avg_train_t:.4f}/{avg_train_s:.4f} | "
-                f"Phy Loss: {avg_train_phy:.4f} (Surf:{loss_dict['loss_surf']:.3f}, MLD:{loss_dict['loss_mld']:.3f}, SLA:{loss_dict['loss_sla']:.3f}, Grad:{loss_dict['loss_grad']:.3f}) | "
+                f"Phy Loss: {avg_train_phy:.4f} (Surf:{loss_dict['loss_surf']:.3f}, MLD:{loss_dict['loss_mld']:.3f}, SLA:{loss_dict['loss_sla']:.3f}, Grad:{loss_dict['loss_grad']:.3f}, Stab:{loss_dict['loss_stab']:.3f}) | "
                 f"Val MSE (T/S): {avg_val_t:.4f}/{avg_val_s:.4f} | "
-                f"Weights (w1/w2): {w1:.2f}/{w2:.2f}"
+                f"Weights (w1/w2): {w1:.2f}/{w2:.2f} | "
+                f"Patience: {no_improve_epochs}/{args.patience}"
             )
             print(log_line)
             with open(log_file_path, "a", encoding="utf-8") as f_log:
                 f_log.write(log_line + "\n")
 
-            if avg_val_mse < best_val_loss:
-                best_val_loss = avg_val_mse
-                ckpt_data = {
-                    'epoch': epoch,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'adaptive_loss_state_dict': adaptive_loss_fn.state_dict(),
-                    'val_loss': best_val_loss,
-                    'stats': train_dataset.stats,
-                    'tag': res_dirs['tag']
-                }
-                save_path_tag = os.path.join(res_dirs['ckpt_dir'], "swin_ocean_pinn_best.pth")
-                torch.save(ckpt_data, save_path_tag)
-                if args.output_dir:
-                    save_path_legacy = os.path.join(args.output_dir, "swin_ocean_pinn_best.pth")
-                    torch.save(ckpt_data, save_path_legacy)
-                print(f"--> [Checkpoint] Updated optimal model saved to {save_path_tag}")
+            if is_best:
+                ckpt_msg = f"--> [Checkpoint] Updated optimal model saved to {save_path_tag} (Epoch: {epoch}, Val Loss: {best_val_loss:.6f})"
+                print(ckpt_msg)
                 with open(log_file_path, "a", encoding="utf-8") as f_log:
-                    f_log.write(f"--> [Checkpoint] Updated optimal model saved to {save_path_tag} (Val Loss: {best_val_loss:.6f})\n")
+                    f_log.write(ckpt_msg + "\n")
 
-    done_msg = f"\n[Complete] Training finished successfully. Logs saved to: {log_file_path}"
+        # Early Stopping Trigger (Patience = 50 epochs)
+        if no_improve_epochs >= args.patience:
+            early_stop_msg = (
+                f"\n[Early Stopping Triggered] Validation loss has not improved for {args.patience} consecutive epochs.\n"
+                f"Terminating training early at Epoch {epoch}. Optimal model checkpoint preserved from Epoch {best_epoch} (Val Loss: {best_val_loss:.6f})."
+            )
+            print(early_stop_msg)
+            with open(log_file_path, "a", encoding="utf-8") as f_log:
+                f_log.write(early_stop_msg + "\n")
+            break
+
+    done_msg = (
+        f"\n[Complete] Training session concluded. Total Epochs Run: {epoch}/{args.epochs} | "
+        f"Optimal Checkpoint Epoch: {best_epoch} (Val Loss: {best_val_loss:.6f})\n"
+        f"Logs saved to: {log_file_path}"
+    )
     print(done_msg)
     with open(log_file_path, "a", encoding="utf-8") as f_log:
         f_log.write(done_msg + "\n")

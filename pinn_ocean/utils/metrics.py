@@ -90,29 +90,21 @@ def calc_layer_metrics(preds, targets, depths):
         depths = depths.detach().cpu().numpy()
 
     D = len(depths)
-    # Ensure depth axis is accessible: find axis matching D
-    shape = preds.shape
-    if len(shape) == 4:  # (T, D, H, W)
-        d_axis = 1
-    elif len(shape) == 3:  # (D, H, W)
-        d_axis = 0
-    else:
-        d_axis = -1
+    d_axis = -1
+    for idx, s in enumerate(preds.shape):
+        if s == D:
+            d_axis = idx
+            break
 
     layer_rmse = []
     layer_mae = []
     layer_r2 = []
 
     for d in range(D):
-        if d_axis == 1:
-            p_layer = preds[:, d, :, :].flatten()
-            t_layer = targets[:, d, :, :].flatten()
-        elif d_axis == 0:
-            p_layer = preds[d, :, :].flatten()
-            t_layer = targets[d, :, :].flatten()
-        else:
-            p_layer = preds[..., d].flatten()
-            t_layer = targets[..., d].flatten()
+        sl = [slice(None)] * preds.ndim
+        sl[d_axis] = d
+        p_layer = preds[tuple(sl)].flatten()
+        t_layer = targets[tuple(sl)].flatten()
 
         layer_rmse.append(float(calc_rmse(p_layer, t_layer)))
         layer_mae.append(float(calc_mae(p_layer, t_layer)))
@@ -143,13 +135,12 @@ def calc_regime_metrics(preds, targets, depths):
     if isinstance(depths, torch.Tensor):
         depths = depths.detach().cpu().numpy()
 
-    # Determine depth axis
-    if preds.ndim == 4:
-        d_axis = 1
-    elif preds.ndim == 3:
-        d_axis = 0
-    else:
-        d_axis = -1
+    D = len(depths)
+    d_axis = -1
+    for idx, s in enumerate(preds.shape):
+        if s == D:
+            d_axis = idx
+            break
 
     regimes = {
         "mixed_layer": (0.0, 100.0, "0-100m (混合层)"),
@@ -163,15 +154,10 @@ def calc_regime_metrics(preds, targets, depths):
         if not np.any(mask):
             continue
 
-        if d_axis == 1:
-            p_sub = preds[:, mask, :, :].flatten()
-            t_sub = targets[:, mask, :, :].flatten()
-        elif d_axis == 0:
-            p_sub = preds[mask, :, :].flatten()
-            t_sub = targets[mask, :, :].flatten()
-        else:
-            p_sub = preds[..., mask].flatten()
-            t_sub = targets[..., mask].flatten()
+        sl = [slice(None)] * preds.ndim
+        sl[d_axis] = mask
+        p_sub = preds[tuple(sl)].flatten()
+        t_sub = targets[tuple(sl)].flatten()
 
         results[key] = {
             "label": label,
@@ -219,20 +205,15 @@ def calc_density_inversion_rate(temp, sal, depths, tol=1e-5):
         depths_t = depths.float()
 
     D = len(depths_t)
-    orig_shape = temp_t.shape
+    # Auto-detect depth axis
+    d_axis = -1
+    for idx, s in enumerate(temp_t.shape):
+        if s == D:
+            d_axis = idx
+            break
 
-    # Find depth dimension
-    if len(orig_shape) == 4:
-        # (T, D, H, W) -> permute to (T, H, W, D)
-        temp_flat = temp_t.permute(0, 2, 3, 1).reshape(-1, D)
-        sal_flat = sal_t.permute(0, 2, 3, 1).reshape(-1, D)
-    elif len(orig_shape) == 3:
-        # (D, H, W) -> permute to (H, W, D)
-        temp_flat = temp_t.permute(1, 2, 0).reshape(-1, D)
-        sal_flat = sal_t.permute(1, 2, 0).reshape(-1, D)
-    else:
-        temp_flat = temp_t.reshape(-1, D)
-        sal_flat = sal_t.reshape(-1, D)
+    temp_flat = temp_t.transpose(d_axis, -1).contiguous().reshape(-1, D)
+    sal_flat = sal_t.transpose(d_axis, -1).contiguous().reshape(-1, D)
 
     z_broadcast = depths_t.view(1, D).expand(temp_flat.shape[0], -1)
 
@@ -274,12 +255,12 @@ def calc_temp_monotonicity_violation(temp, depths, start_depth=100.0, tol=0.01):
         depths = depths.detach().cpu().numpy()
 
     D = len(depths)
-    if temp.ndim == 4:
-        temp_flat = np.moveaxis(temp, 1, -1).reshape(-1, D)
-    elif temp.ndim == 3:
-        temp_flat = np.moveaxis(temp, 0, -1).reshape(-1, D)
-    else:
-        temp_flat = temp.reshape(-1, D)
+    d_axis = -1
+    for idx, s in enumerate(temp.shape):
+        if s == D:
+            d_axis = idx
+            break
+    temp_flat = np.moveaxis(temp, d_axis, -1).reshape(-1, D)
 
     # Filter depth range
     sub_mask = depths[:-1] >= start_depth
@@ -323,7 +304,17 @@ def calc_domain_mld_metrics(pred_t, true_t, depths, delta_t=0.5):
     if isinstance(depths, torch.Tensor):
         depths = depths.detach().cpu().numpy()
 
+    D = len(depths)
+    d_axis = -1
+    for idx, s in enumerate(pred_t.shape):
+        if s == D:
+            d_axis = idx
+            break
+
     if pred_t.ndim == 4:  # (T, D, H, W)
+        if d_axis != 1:
+            pred_t = np.moveaxis(pred_t, d_axis, 1)
+            true_t = np.moveaxis(true_t, d_axis, 1)
         T, D, H, W = pred_t.shape
         pred_mld = np.zeros((T, H, W), dtype=np.float32)
         true_mld = np.zeros((T, H, W), dtype=np.float32)
@@ -333,6 +324,9 @@ def calc_domain_mld_metrics(pred_t, true_t, depths, delta_t=0.5):
                     pred_mld[t, h, w] = calc_mld(pred_t[t, :, h, w], depths, delta_t=delta_t)
                     true_mld[t, h, w] = calc_mld(true_t[t, :, h, w], depths, delta_t=delta_t)
     elif pred_t.ndim == 3:  # (D, H, W)
+        if d_axis != 0:
+            pred_t = np.moveaxis(pred_t, d_axis, 0)
+            true_t = np.moveaxis(true_t, d_axis, 0)
         D, H, W = pred_t.shape
         pred_mld = np.zeros((H, W), dtype=np.float32)
         true_mld = np.zeros((H, W), dtype=np.float32)
@@ -340,6 +334,16 @@ def calc_domain_mld_metrics(pred_t, true_t, depths, delta_t=0.5):
             for w in range(W):
                 pred_mld[h, w] = calc_mld(pred_t[:, h, w], depths, delta_t=delta_t)
                 true_mld[h, w] = calc_mld(true_t[:, h, w], depths, delta_t=delta_t)
+    elif pred_t.ndim == 2:  # (N, D)
+        if d_axis != -1 and d_axis != 1:
+            pred_t = np.moveaxis(pred_t, d_axis, -1)
+            true_t = np.moveaxis(true_t, d_axis, -1)
+        N, D = pred_t.shape
+        pred_mld = np.zeros(N, dtype=np.float32)
+        true_mld = np.zeros(N, dtype=np.float32)
+        for i in range(N):
+            pred_mld[i] = calc_mld(pred_t[i, :], depths, delta_t=delta_t)
+            true_mld[i] = calc_mld(true_t[i, :], depths, delta_t=delta_t)
     else:
         raise ValueError(f"Unsupported pred_t dimension: {pred_t.ndim}")
 
@@ -352,5 +356,197 @@ def calc_domain_mld_metrics(pred_t, true_t, depths, delta_t=0.5):
         "mld_r2": float(calc_r2(p_flat, t_flat)),
         "pred_mld": pred_mld,
         "true_mld": true_mld
+    }
+
+
+def calc_buoyancy_frequency_metrics(temp, sal, depths, true_temp=None, true_sal=None, n2_tol=-1e-7):
+    """
+    Computes Brunt-Väisälä buoyancy frequency squared (N^2, s^-2) and pycnocline stratification
+    metrics using TEOS-10 local midpoint pressure formulation.
+
+    Args:
+        temp: (..., D, H, W) or (N, D) temperature (°C), torch.Tensor or np.ndarray
+        sal: (..., D, H, W) or (N, D) salinity (PSU), matching temp
+        depths: (D,) depth array (meters)
+        true_temp: optional ground truth temperature for comparative error analysis
+        true_sal: optional ground truth salinity
+        n2_tol: convective instability threshold (default: -1e-7 s^-2)
+
+    Returns:
+        dict with CIR, mean N^2, pycnocline depth error metrics, etc.
+    """
+    from .teos10 import calc_buoyancy_frequency_n2
+
+    if isinstance(temp, torch.Tensor):
+        temp_np = temp.detach().cpu().numpy()
+    else:
+        temp_np = np.asarray(temp, dtype=np.float32)
+
+    if isinstance(sal, torch.Tensor):
+        sal_np = sal.detach().cpu().numpy()
+    else:
+        sal_np = np.asarray(sal, dtype=np.float32)
+
+    if isinstance(depths, torch.Tensor):
+        depths_np = depths.detach().cpu().numpy()
+    else:
+        depths_np = np.asarray(depths, dtype=np.float32)
+
+    D = len(depths_np)
+    # Find depth axis
+    d_axis = -1
+    for idx, s in enumerate(temp_np.shape):
+        if s == D:
+            d_axis = idx
+            break
+
+    n2_pred = calc_buoyancy_frequency_n2(sal_np, temp_np, depths_np, depth_axis=d_axis)
+    z_mid = 0.5 * (depths_np[:-1] + depths_np[1:])
+
+    pred_unstable = n2_pred < n2_tol
+    total_eval = int(pred_unstable.size)
+    pred_inversions = int(np.sum(pred_unstable))
+    cir_pred_pct = float(pred_inversions / max(total_eval, 1) * 100.0)
+    mean_n2_pred = float(np.mean(n2_pred))
+
+    # Pycnocline depth (arg max N^2 along depth axis)
+    pyc_idx_pred = np.argmax(n2_pred, axis=d_axis)
+    pyc_depth_pred = z_mid[pyc_idx_pred]
+    pyc_peak_pred = np.max(n2_pred, axis=d_axis)
+
+    metrics = {
+        "cir_pred_percent": cir_pred_pct,
+        "pred_inversions": pred_inversions,
+        "total_evaluated": total_eval,
+        "mean_n2_pred": mean_n2_pred,
+        "pred_n2": n2_pred,
+        "pred_pycnocline_depth": pyc_depth_pred,
+        "pred_pycnocline_peak": pyc_peak_pred
+    }
+
+    if true_temp is not None and true_sal is not None:
+        if isinstance(true_temp, torch.Tensor):
+            true_t_np = true_temp.detach().cpu().numpy()
+        else:
+            true_t_np = np.asarray(true_temp, dtype=np.float32)
+        if isinstance(true_sal, torch.Tensor):
+            true_s_np = true_sal.detach().cpu().numpy()
+        else:
+            true_s_np = np.asarray(true_sal, dtype=np.float32)
+
+        n2_true = calc_buoyancy_frequency_n2(true_s_np, true_t_np, depths_np, depth_axis=d_axis)
+        true_unstable = n2_true < n2_tol
+        true_inversions = int(np.sum(true_unstable))
+        cir_true_pct = float(true_inversions / max(total_eval, 1) * 100.0)
+        mean_n2_true = float(np.mean(n2_true))
+
+        pyc_idx_true = np.argmax(n2_true, axis=d_axis)
+        pyc_depth_true = z_mid[pyc_idx_true]
+        pyc_peak_true = np.max(n2_true, axis=d_axis)
+
+        p_depth_flat = pyc_depth_pred.flatten()
+        t_depth_flat = pyc_depth_true.flatten()
+        p_peak_flat = pyc_peak_pred.flatten()
+        t_peak_flat = pyc_peak_true.flatten()
+
+        metrics.update({
+            "cir_true_percent": cir_true_pct,
+            "true_inversions": true_inversions,
+            "mean_n2_true": mean_n2_true,
+            "pycnocline_depth_rmse": float(calc_rmse(p_depth_flat, t_depth_flat)),
+            "pycnocline_depth_mae": float(calc_mae(p_depth_flat, t_depth_flat)),
+            "pycnocline_peak_rmse": float(calc_rmse(p_peak_flat, t_peak_flat)),
+            "true_n2": n2_true,
+            "true_pycnocline_depth": pyc_depth_true,
+            "true_pycnocline_peak": pyc_peak_true
+        })
+
+    return metrics
+
+
+def calc_multilevel_density_inversion_rate(temp, sal, depths, split_depth=500.0, tol=1e-5):
+    """
+    Calculates Multi-Level Potential Density Inversion Rate.
+    Uses surface-referenced sigma_0 (p_ref=0 dbar) for upper layers (z <= split_depth)
+    and intermediate-referenced sigma_1 (p_ref=1000 dbar) for deep layers (z > split_depth).
+    This eliminates thermobaric fictitious inversions caused by single surface reference pressure.
+
+    Args:
+        temp: (..., D, H, W) or (N, D) temperature (°C)
+        sal: (..., D, H, W) or (N, D) salinity (PSU)
+        depths: (D,) depth array (meters)
+        split_depth: transition depth in meters (default: 500m)
+        tol: numerical tolerance (default: 1e-5 kg/m^3/m)
+
+    Returns:
+        dict with:
+            'overall_inversion_rate_percent': multi-level potential density inversion rate (%)
+            'sigma0_inversion_rate_percent': upper layer inversion rate (%)
+            'sigma1_inversion_rate_percent': deep layer inversion rate (%)
+            'total_inversions': count
+            'total_evaluated': total vertical gradient points
+    """
+    from .teos10 import calc_potential_density_sigma
+
+    if isinstance(temp, torch.Tensor):
+        temp_np = temp.detach().cpu().numpy()
+    else:
+        temp_np = np.asarray(temp, dtype=np.float32)
+    if isinstance(sal, torch.Tensor):
+        sal_np = sal.detach().cpu().numpy()
+    else:
+        sal_np = np.asarray(sal, dtype=np.float32)
+    if isinstance(depths, torch.Tensor):
+        depths_np = depths.detach().cpu().numpy()
+    else:
+        depths_np = np.asarray(depths, dtype=np.float32)
+
+    D = len(depths_np)
+    d_axis = -1
+    for idx, s in enumerate(temp_np.shape):
+        if s == D:
+            d_axis = idx
+            break
+    temp_flat = np.moveaxis(temp_np, d_axis, -1).reshape(-1, D)
+    sal_flat = np.moveaxis(sal_np, d_axis, -1).reshape(-1, D)
+
+    # Calculate sigma_0 and sigma_1 across all profiles
+    sigma_0 = calc_potential_density_sigma(sal_flat, temp_flat, p_ref=0.0)
+    sigma_1 = calc_potential_density_sigma(sal_flat, temp_flat, p_ref=1000.0)
+
+    dz = depths_np[1:] - depths_np[:-1]
+
+    # Gradient for sigma_0 in upper region: z < split_depth
+    dz_upper_mask = (depths_np[:-1] < split_depth)
+    d_sigma0 = sigma_0[:, 1:] - sigma_0[:, :-1]
+    d_sigma0_dz = d_sigma0[:, dz_upper_mask] / dz[dz_upper_mask]
+    inv_s0 = (d_sigma0_dz < -tol)
+    s0_inv_cnt = int(np.sum(inv_s0))
+    s0_total = int(inv_s0.size)
+
+    # Gradient for sigma_1 in lower region: z >= split_depth
+    dz_lower_mask = (depths_np[:-1] >= split_depth)
+    if np.any(dz_lower_mask):
+        d_sigma1 = sigma_1[:, 1:] - sigma_1[:, :-1]
+        d_sigma1_dz = d_sigma1[:, dz_lower_mask] / dz[dz_lower_mask]
+        inv_s1 = (d_sigma1_dz < -tol)
+        s1_inv_cnt = int(np.sum(inv_s1))
+        s1_total = int(inv_s1.size)
+    else:
+        s1_inv_cnt = 0
+        s1_total = 0
+
+    total_inversions = s0_inv_cnt + s1_inv_cnt
+    total_evaluated = s0_total + s1_total
+    overall_rate = float(total_inversions / max(total_evaluated, 1) * 100.0)
+    s0_rate = float(s0_inv_cnt / max(s0_total, 1) * 100.0)
+    s1_rate = float(s1_inv_cnt / max(s1_total, 1) * 100.0) if s1_total > 0 else 0.0
+
+    return {
+        "overall_inversion_rate_percent": overall_rate,
+        "sigma0_inversion_rate_percent": s0_rate,
+        "sigma1_inversion_rate_percent": s1_rate,
+        "total_inversions": total_inversions,
+        "total_evaluated": total_evaluated
     }
 
