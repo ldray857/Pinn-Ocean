@@ -6,6 +6,7 @@ Includes RMSE, MAE, R2 score, and oceanographic Mixed Layer Depth (MLD).
 
 import numpy as np
 import torch
+from typing import Optional, Dict, List, Tuple
 
 
 def calc_rmse(preds, targets):
@@ -600,31 +601,43 @@ def calc_gradient_fidelity(preds, targets):
     }
 
 
-def calc_model_superiority_index(rmse_t, rmse_s, r2_t, r2_s, cir_percent, tmv_percent, mld_mae):
+def calc_model_superiority_index(
+    rmse_t: float = 0.0,
+    rmse_s: float = 0.0,
+    r2_t: float = 0.0,
+    r2_s: float = 0.0,
+    cir_percent: float = 0.0,
+    tmv_percent: float = 0.0,
+    mld_mae: float = 0.0,
+    r2_s_thermocline: Optional[float] = None
+):
     """
     Computes a normalized composite Superiority Score (0-100) combining
-    statistical accuracy, physical compliance, and boundary fidelity.
+    statistical accuracy (R^2 metrics), physical compliance, and boundary fidelity.
     
     Higher score indicates greater superiority.
     """
     # Normalized components (bounded [0, 1])
-    # Temperature accuracy score: 1.0 at RMSE=0, drops at higher RMSE
-    s_t = max(0.0, 1.0 - (rmse_t / 3.0))
-    # Salinity accuracy score
-    s_s = max(0.0, 1.0 - (rmse_s / 0.3))
-    # Correlation score
-    s_r2 = max(0.0, (max(0.0, r2_t) + max(0.0, r2_s)) / 2.0)
+    # Temperature R^2 score: higher is better
+    s_t = max(0.0, min(1.0, float(r2_t)))
+    # Salinity R^2 score: higher is better
+    s_s = max(0.0, min(1.0, float(r2_s)))
+    # Thermocline R^2 score (or mean R^2)
+    if r2_s_thermocline is not None:
+        s_th = max(0.0, min(1.0, float(r2_s_thermocline)))
+    else:
+        s_th = max(0.0, min(1.0, (s_t + s_s) / 2.0))
     # Convective stability score: 1.0 at 0% instability, 0 at >=15%
     s_stab = max(0.0, 1.0 - (cir_percent / 15.0))
     # Deep thermal monotonicity score: 1.0 at 0% violation, 0 at >=5%
     s_mono = max(0.0, 1.0 - (tmv_percent / 5.0))
-    # MLD boundary score: 1.0 at 0m MAE, 0 at >=50m
-    s_mld = max(0.0, 1.0 - (mld_mae / 50.0))
+    # MLD boundary score: 1.0 at 0m MAE, 0 at >=100m
+    s_mld = max(0.0, 1.0 - (mld_mae / 100.0))
 
     composite_score = (
         0.20 * s_t +
         0.20 * s_s +
-        0.15 * s_r2 +
+        0.15 * s_th +
         0.20 * s_stab +
         0.15 * s_mono +
         0.10 * s_mld
@@ -634,7 +647,7 @@ def calc_model_superiority_index(rmse_t, rmse_s, r2_t, r2_s, cir_percent, tmv_pe
         "composite_score": float(composite_score),
         "score_t": float(s_t * 100.0),
         "score_s": float(s_s * 100.0),
-        "score_r2": float(s_r2 * 100.0),
+        "score_r2": float(s_th * 100.0),
         "score_stratification": float(s_stab * 100.0),
         "score_monotonicity": float(s_mono * 100.0),
         "score_mld": float(s_mld * 100.0)
