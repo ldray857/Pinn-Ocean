@@ -279,7 +279,7 @@ Pinn-Ocean/
 │   └── 2015_2020/             # 2015–2020 six-year experiment asset bundle
 │       ├── checkpoints/       # Best model checkpoint (swin_ocean_pinn_best.pth)
 │       ├── log/               # Training & evaluation logs (train.log, eval.log, metrics_detailed.json)
-│       ├── pic/               # Publication-grade 300 DPI figures (fig1 ~ fig8) and layers_50m/
+│       ├── pic/               # Publication-grade 300 DPI figures and benchmark evaluations
 │       └── con/               # 3-D volumetric NetCDF & ArcGIS Pro 10m regular voxel layers
 ├── download_data.py           # Automated data collection tool for Open Pacific CMEMS datasets
 ├── train.py                   # Model training entry point (multi-year support & active physics)
@@ -378,23 +378,20 @@ The pipeline automatically exports two complementary CF-1.8 standard NetCDF4 dat
 python predict.py --mode test --years 2015 2016 2017 2018 2019 2020 --export_regular --regular_step 10.0
 ```
 
-### 6.6 Publication-Quality 3D & 2D Visualization Suite
+### 6.6 Publication-Quality Visualization Suite
 Generate publication-quality 300 DPI figures exported directly into `result/2015_2020/pic/`:
 ```bash
-# Generates all 9 publication-grade 50m layers, sections, profiles, and 3D figures
+# Generates publication-grade 50m layers, depth profiles, and T-S figures
 python visualize.py --mode test --years 2015 2016 2017 2018 2019 2020 --all
 ```
 
-**Generated Figure Suite (9 Figures & 50m Depth Layers)**:
-* **`fig1_depth_layers_50m_temp.png`**: 50m-interval layer-by-layer horizontal depth slice evaluation for temperature (0–1000m overview across key depth layers: 0, 50, 100, 150, 200, 300, 400, 500, 750, 1000m), with 21 individual 50m layer maps saved in `layers_50m/`;
-* **`fig1_depth_layers_50m_sal.png`**: 50m-interval layer-by-layer horizontal depth slice evaluation for salinity (0–1000m overview across key depth layers), with 21 individual 50m layer maps saved in `layers_50m/`;
-* **`fig2_vertical_section_35n.png`**: High-resolution 0–1000m continuous vertical transect along 35°N Kuroshio Extension (Ground Truth, Prediction, and Error);
+**Generated Figure Suite**:
+* **`fig1_depth_layers_50m_temp.png`**: 50m-interval layer-by-layer horizontal depth slice evaluation for temperature (0–1000m overview across key depth layers: 0, 50, 100, 150, 200, 300, 400, 500, 750, 1000m);
+* **`fig1_depth_layers_50m_sal.png`**: 50m-interval layer-by-layer horizontal depth slice evaluation for salinity (0–1000m overview across key depth layers);
 * **`fig3_layer_metrics_depth.png`**: Continuous layer-wise RMSE(z), MAE(z), and $R^2(z)$ profiles across 0–1000m depth;
 * **`fig4_multi_station_profiles.png`**: Multi-station profile array comparing 4 contrasting dynamic regimes (Kuroshio Jet, Subtropical Warm Pool, Subarctic Water, Open Ocean Center);
 * **`fig5_ts_diagram.png`**: Temperature-Salinity (T-S) water mass diagram with potential density ($\sigma_\theta$) isopycnal contours;
-* **`fig6_scatter_density.png`**: Full-depth Hexbin scatter density plot with 1:1 reference line;
-* **`fig7_mld_validation.png`**: Mixed Layer Depth (MLD) physical interface validation scatter plot;
-* **`fig8_3d_isotherm_15c.png`**: 3D 15°C isotherm surface topography highlighting frontal thermocline tilting across Kuroshio Extension.
+* **`fig6_scatter_density.png`**: Full-depth Hexbin scatter density plot with 1:1 reference line.
 
 ### 6.7 GLORYS 3-D Continuous Super-Resolution & Spatial Downscaling
 Empowered by continuous Fourier depth embeddings and sub-pixel neural decoding, the framework supports arbitrary horizontal downscaling (e.g. 2x, 4x from 1/12° to 1/24° or 1/48°) and arbitrary vertical regular voxel interpolation (e.g. 10m or 5m intervals):

@@ -5,7 +5,6 @@ Renders 3D oceanographic bounding box with intersecting orthogonal slices:
 1. Horizontal depth slice (e.g. main thermocline at z=100m)
 2. Zonal vertical transect wall (e.g. along Kuroshio Extension at 35°N)
 3. Meridional vertical transect wall (e.g. at 155°E)
-Also includes 3D Isothermal Surface Topography.
 """
 
 import os
@@ -148,93 +147,3 @@ def plot_3d_thermohaline_box(
     plt.close(fig)
     return save_path
 
-
-def plot_3d_isotherm_surface(
-    true_t, pred_t, lons, lats, depths,
-    target_temp=15.0,
-    save_path="result/pic/fig8_3d_isotherm_15c.png"
-):
-    """
-    Renders the 3D depth topography of a characteristic isothermal surface (e.g. 15 deg C thermocline).
-    Shows True vs. Reconstructed vs. Depth Difference in 3D.
-    """
-    D, H, W = true_t.shape
-    z_true = np.full((H, W), np.nan, dtype=np.float32)
-    z_pred = np.full((H, W), np.nan, dtype=np.float32)
-
-    for h in range(H):
-        for w in range(W):
-            # Interpolate depth of target_temp for true
-            t_col_true = true_t[:, h, w]
-            if t_col_true.min() <= target_temp <= t_col_true.max():
-                for d in range(D - 1):
-                    if (t_col_true[d] >= target_temp >= t_col_true[d+1]) or (t_col_true[d] <= target_temp <= t_col_true[d+1]):
-                        if t_col_true[d+1] != t_col_true[d]:
-                            frac = (target_temp - t_col_true[d]) / (t_col_true[d+1] - t_col_true[d])
-                            z_true[h, w] = depths[d] + frac * (depths[d+1] - depths[d])
-                        else:
-                            z_true[h, w] = depths[d]
-                        break
-
-            # Interpolate depth of target_temp for pred
-            t_col_pred = pred_t[:, h, w]
-            if t_col_pred.min() <= target_temp <= t_col_pred.max():
-                for d in range(D - 1):
-                    if (t_col_pred[d] >= target_temp >= t_col_pred[d+1]) or (t_col_pred[d] <= target_temp <= t_col_pred[d+1]):
-                        if t_col_pred[d+1] != t_col_pred[d]:
-                            frac = (target_temp - t_col_pred[d]) / (t_col_pred[d+1] - t_col_pred[d])
-                            z_pred[h, w] = depths[d] + frac * (depths[d+1] - depths[d])
-                        else:
-                            z_pred[h, w] = depths[d]
-                        break
-
-    # Fill NaNs with domain median if outside bounds
-    med_true = np.nanmedian(z_true) if not np.isnan(np.nanmedian(z_true)) else 250.0
-    z_true[np.isnan(z_true)] = med_true
-    z_pred[np.isnan(z_pred)] = med_true
-
-    z_diff = z_pred - z_true
-
-    X, Y = np.meshgrid(lons, lats)
-    vmin_z = float(np.percentile(z_true, 2))
-    vmax_z = float(np.percentile(z_true, 98))
-    norm_z = plt.Normalize(vmin=vmin_z, vmax=vmax_z)
-    cmap_z = cmocean.cm.deep_r
-
-    fig = plt.figure(figsize=(19, 6.2), dpi=300)
-
-    # Panel 1: True Isotherm Depth Surface
-    ax1 = fig.add_subplot(1, 3, 1, projection='3d')
-    c1 = cmap_z(norm_z(z_true))
-    ax1.plot_surface(X, Y, z_true, facecolors=c1, shade=False, alpha=0.92, rstride=1, cstride=1)
-    ax1.set_title(f"GLORYS12V1 真值 {target_temp}°C 等温面埋深 (m)", fontsize=11.5, fontweight='bold')
-    ax1.set_zlim(vmax_z + 30, vmin_z - 30)
-    ax1.view_init(elev=28, azim=-60)
-
-    # Panel 2: Predicted Isotherm Depth Surface
-    ax2 = fig.add_subplot(1, 3, 2, projection='3d')
-    c2 = cmap_z(norm_z(z_pred))
-    ax2.plot_surface(X, Y, z_pred, facecolors=c2, shade=False, alpha=0.92, rstride=1, cstride=1)
-    ax2.set_title(f"Swin-Ocean-PINN 重构 {target_temp}°C 等温面埋深 (m)", fontsize=11.5, fontweight='bold')
-    ax2.set_zlim(vmax_z + 30, vmin_z - 30)
-    ax2.view_init(elev=28, azim=-60)
-
-    # Panel 3: Depth Error Surface
-    ax3 = fig.add_subplot(1, 3, 3, projection='3d')
-    norm_diff = plt.Normalize(vmin=-30.0, vmax=30.0)
-    cmap_diff = cmocean.cm.balance
-    c3 = cmap_diff(norm_diff(z_diff))
-    ax3.plot_surface(X, Y, z_diff, facecolors=c3, shade=False, alpha=0.92, rstride=1, cstride=1)
-    ax3.set_title(f"{target_temp}°C 等温面埋深误差 ΔZ (m)", fontsize=11.5, fontweight='bold')
-    ax3.view_init(elev=28, azim=-60)
-
-    for ax in [ax1, ax2, ax3]:
-        ax.set_xlabel("经度 Lon (°E)", fontsize=9)
-        ax.set_ylabel("纬度 Lat (°N)", fontsize=9)
-        ax.set_zlabel("水深 Depth (m)", fontsize=9)
-
-    fig.suptitle(f"西北太平洋 {target_temp}°C 主跃层特征等温面三维空间拓扑起伏重建", fontsize=13.5, fontweight='bold', y=0.98)
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close(fig)
-    return save_path

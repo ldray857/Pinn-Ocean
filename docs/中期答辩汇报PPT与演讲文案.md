@@ -83,7 +83,7 @@ flowchart LR
 ---
 
 ### 第 6 页：阶段成果三：双格式 CF-1.8 资产与 ArcGIS Pro 多维体素孪生（Breakthrough 3）
-- **版面设计**：展示 `fig8_3d_isotherm_15c.png` 与 ArcGIS Pro 3.x 3D Voxel Layer 渲染实景截图。
+- **版面设计**：展示 ArcGIS Pro 3.x 3D Voxel Layer 渲染实景截图与 `fig_glorys_super_resolution_comparison.png`。
 - **精简文案要点**：
   * **真值对齐版（35层）**：完全兼容 GLORYS 原生物理坐标，用于残差分析与定量制图；
   * **严格等距体素版（101层）**：以 10m 严格等距立体导出，**原生完美适配 ArcGIS Pro 3.x 体素图层**，消除不规则几何畸变警告；

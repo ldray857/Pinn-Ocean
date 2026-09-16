@@ -282,7 +282,7 @@ Pinn-Ocean/
 │   └── 2015_2020/             # 2015–2020 六年期训练成果包
 │       ├── checkpoints/       # 最优模型权重 (swin_ocean_pinn_best.pth)
 │       ├── log/               # 训练与评估日志 (train.log, eval.log, metrics_detailed.json)
-│       ├── pic/               # 9 组 300 DPI 学术出版级科研对比图件与 layers_50m/
+│       ├── pic/               # 学术出版级科研对比图件与评测图件
 │       └── con/               # 3D 立体反演 NetCDF 与 ArcGIS Pro 10m 体素数据
 ├── download_data.py           # CMEMS 开阔太平洋多源遥感与 3D 再分析数据自动化下载脚本
 ├── train.py                   # 完整模型训练主入口 (支持多卡加速与主动物理约束)
@@ -381,23 +381,20 @@ python evaluate.py --mode test --years 2015 2016 2017 2018 2019 2020
 python predict.py --mode test --years 2015 2016 2017 2018 2019 2020 --export_regular --regular_step 10.0
 ```
 
-### 6.6 顶刊级 3D 与 2D 科学可视化绘图
-自动生成 9 幅符合顶级学术期刊与中期报告规范的 300 DPI 高清科研图件，保存于 `result/2015_2020/pic/`：
+### 6.6 顶刊级科学可视化绘图
+自动生成符合顶级学术期刊与中期报告规范的 300 DPI 高清科研图件，保存于 `result/2015_2020/pic/`：
 ```bash
-# 一键生成全部 9 组 50m 逐层切片、断面、剖面及三维等温面图件
+# 一键生成 50m 逐层切片、指标廓线、剖面及温盐关系图件
 python visualize.py --mode test --years 2015 2016 2017 2018 2019 2020 --all
 ```
 
-**生成的 9 组科研图件清单**：
-* **`fig1_depth_layers_50m_temp.png`**：50 米间隔水平逐层切片温度对比总览图（0–1000m，精选代表层：0, 50, 100, 150, 200, 300, 400, 500, 750, 1000m），同时在 `layers_50m/` 输出全部 21 层独立 50 米切片；
-* **`fig1_depth_layers_50m_sal.png`**：50 米间隔水平逐层切片盐度对比总览图（0–1000m），同时在 `layers_50m/` 输出全部 21 层独立 50 米切片；
-* **`fig2_vertical_section_35n.png`**：沿 35°N 穿切黑潮延伸体轴线的高分辨率 0–1000m 连续垂直断面（真值、重构与绝对误差对比）；
+**生成的科研图件清单**：
+* **`fig1_depth_layers_50m_temp.png`**：50 米间隔水平逐层切片温度对比总览图（0–1000m，精选代表层：0, 50, 100, 150, 200, 300, 400, 500, 750, 1000m）；
+* **`fig1_depth_layers_50m_sal.png`**：50 米间隔水平逐层切片盐度对比总览图（0–1000m，精选代表层）；
 * **`fig3_layer_metrics_depth.png`**：全水深 0–1000m 逐层连续的 RMSE(z)、MAE(z) 与 $R^2(z)$ 误差分布廓线；
 * **`fig4_multi_station_profiles.png`**：四大典型动力学特征区（黑潮急流轴、副热带暖水池、亲潮冷水区、外海大洋中心）垂直剖面阵列对比；
 * **`fig5_ts_diagram.png`**：全海域温盐关系 (T-S Diagram) 水团相图与潜在密度等值线 ($\sigma_\theta$) 叠置图；
-* **`fig6_scatter_density.png`**：全深度 Hexbin 散点热力密度与 1:1 理想参考线；
-* **`fig7_mld_validation.png`**：上混合层深度 (MLD) 物理界面反演验证散点图；
-* **`fig8_3d_isotherm_15c.png`**：15°C 特征温跃层等温面三维拓扑起伏曲面图，立体呈现大洋锋面动力倾斜。
+* **`fig6_scatter_density.png`**：全深度 Hexbin 散点热力密度与 1:1 理想参考线。
 
 ### 6.7 GLORYS 三维空间-垂向连续插值高分超分辨率 (Super-Resolution)
 基于连续傅里叶深度嵌入与亚像素空间神经算子，支持对 GLORYS 场进行任意空间倍率（如 2x、4x）的水平连续降尺度超分，以及垂直任意深度（如 10m、5m 等距规则体素）的高密连续插值：
