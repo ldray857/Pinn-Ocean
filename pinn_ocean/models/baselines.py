@@ -111,7 +111,15 @@ class PureDataCNN3D(nn.Module):
         S = tokens.shape[1]
 
         # Process depth (normalized by 1000m)
-        z_norm = (z.view(1, 1, D, 1) / 1000.0).expand(B, S, D, 1)
+        if z.dim() == 1:
+            z_norm = (z.view(1, 1, D, 1) / 1000.0).expand(B, S, D, 1)
+        elif z.dim() == 4:
+            if z.shape[0] != B or z.shape[1] != S:
+                z_norm = (z / 1000.0).expand(B, S, D, 1)
+            else:
+                z_norm = z / 1000.0
+        else:
+            z_norm = (z.unsqueeze(-1) / 1000.0).expand(B, S, D, 1)
         z_feat = self.depth_mlp(z_norm)  # (B, S, D, hidden_dim)
 
         # Broadcast tokens to depth

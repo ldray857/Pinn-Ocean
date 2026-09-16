@@ -90,9 +90,11 @@ def plot_vertical_profiles(
     )
 
     plt.tight_layout()
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    parent_dir = os.path.dirname(save_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(save_path, dpi=300)
-    plt.close()
+    plt.close(fig)
     return save_path
 
 
@@ -187,7 +189,9 @@ def plot_multi_station_profiles(
                  fontsize=14, fontweight='bold', y=0.98)
     plt.tight_layout()
 
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    parent_dir = os.path.dirname(save_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(save_path, dpi=300)
     plt.close(fig)
     return save_path

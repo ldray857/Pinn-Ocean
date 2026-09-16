@@ -24,6 +24,16 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+# Pre-import HDF5 and NetCDF backends to ensure Windows dynamic linker pre-loads DLLs
+try:
+    import h5py  # noqa: F401
+except ImportError:
+    pass
+try:
+    import netCDF4  # noqa: F401
+except ImportError:
+    pass
+
 # Optional visualization
 import matplotlib
 matplotlib.use('Agg')
@@ -138,7 +148,9 @@ def plot_argo_stations_map(df_summary: pd.DataFrame, bbox: list, year: int, save
     ax.legend(loc="upper right", framealpha=0.9)
 
     plt.tight_layout()
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    parent_dir = os.path.dirname(save_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(save_path, dpi=300)
     plt.close(fig)
     print(f"--> [Visual Map] Saved Argo station distribution map to: {save_path}")

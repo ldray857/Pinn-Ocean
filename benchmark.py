@@ -53,7 +53,7 @@ from pinn_ocean.visualization.benchmark_viz import (
 )
 
 
-def parse_args():
+def parse_args(args=None):
     parser = argparse.ArgumentParser(
         description="Comprehensive Multi-Model Superiority Benchmark & Comparative Visualization"
     )
@@ -89,11 +89,13 @@ def parse_args():
         "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu",
         help="Computing device (cuda or cpu)"
     )
-    return parser.parse_args()
+    parsed, _ = parser.parse_known_args(args)
+    return parsed
 
 
-def run_benchmark():
-    args = parse_args()
+def run_benchmark(args=None):
+    if args is None or isinstance(args, (list, tuple)):
+        args = parse_args(args)
     device = torch.device(args.device)
 
     sla_path = os.path.join(args.data_dir, "pacific_sla.nc")

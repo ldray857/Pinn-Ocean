@@ -281,7 +281,7 @@ class OceanContinuousDataset(Dataset):
         # Uses oceanographic thermal cycle phase: Coldest in Feb (month 2), warmest in Aug (month 8)
         # Bounded in [-1.0, 1.0], completely eliminating out-of-distribution winter extrapolation
         month_vals = np.array([
-            float(t.astype('datetime64[M]').astype(int) % 12 + 1)
+            float(t.month) if hasattr(t, 'month') else float(t.astype('datetime64[M]').astype(int) % 12 + 1)
             for t in self.times
         ])
         self.months_norm = - np.cos(2.0 * np.pi * (month_vals - 2.0) / 12.0)

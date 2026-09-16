@@ -96,9 +96,11 @@ def plot_superiority_radar(
     plt.legend(loc='upper right', bbox_to_anchor=(1.35, 1.15), fontsize=9.5, frameon=True, facecolor='#FFFFFF', edgecolor='#E2E8F0')
 
     plt.tight_layout()
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    parent_dir = os.path.dirname(output_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
+    plt.close(fig)
     print(f"--> [Saved Fig] Multi-Model Superiority Radar: {output_path}")
 
 
@@ -177,9 +179,11 @@ def plot_physics_stability_transect(
 
     axes[-1].set_xlabel("经度 Longitude (°E)", fontsize=10.5)
     plt.tight_layout()
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    parent_dir = os.path.dirname(output_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
+    plt.close(fig)
     print(f"--> [Saved Fig] Physics Stratification Transect Comparison: {output_path}")
 
 
@@ -256,9 +260,11 @@ def plot_glorys_super_resolution_comparison(
     plt.suptitle(f"GLORYS 三维温盐场空间插值高分与超分辨力对比 (水深 {depth_m:.0f}m)", fontsize=14, fontweight='bold', y=0.98)
     plt.subplots_adjust(bottom=0.10, top=0.93, hspace=0.25, wspace=0.18)
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    parent_dir = os.path.dirname(output_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
+    plt.close(fig)
     print(f"--> [Saved Fig] GLORYS Super-Resolution Comparison: {output_path}")
 
 
@@ -320,7 +326,9 @@ def plot_superiority_bar_summary(
     plt.tight_layout()
     plt.subplots_adjust(top=0.92)
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    parent_dir = os.path.dirname(output_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
+    plt.close(fig)
     print(f"--> [Saved Fig] Superiority Bar Summary: {output_path}")
