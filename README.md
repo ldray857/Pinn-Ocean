@@ -279,7 +279,11 @@ Pinn-Ocean/
 │   └── 2015_2020/             # 2015–2020 six-year experiment asset bundle
 │       ├── checkpoints/       # Best model checkpoint (swin_ocean_pinn_best.pth)
 │       ├── log/               # Training & evaluation logs (train.log, eval.log, metrics_detailed.json)
-│       ├── pic/               # Publication-grade 300 DPI figures and benchmark evaluations
+│       ├── pic/               # Publication-grade 300 DPI figures organized into 4 categorized subdirectories
+│       │   ├── 01_spatial_layers/        # Fig01 ~ Fig02: 50m-interval subsurface horizontal slices
+│       │   ├── 02_vertical_profiles/     # Fig03 ~ Fig04: Vertical profiles & layer-wise error curves
+│       │   ├── 03_physical_diagnostics/  # Fig05 ~ Fig06: T-S diagram & hexbin scatter density
+│       │   └── 04_superiority_benchmark/ # Fig07 ~ Fig10: Superiority radar, transect stability & super-res
 │       └── con/               # 3-D volumetric NetCDF & ArcGIS Pro 10m regular voxel layers
 ├── download_data.py           # Automated data collection tool for Open Pacific CMEMS datasets
 ├── train.py                   # Model training entry point (multi-year support & active physics)
@@ -379,19 +383,22 @@ python predict.py --mode test --years 2015 2016 2017 2018 2019 2020 --export_reg
 ```
 
 ### 6.6 Publication-Quality Visualization Suite
-Generate publication-quality 300 DPI figures exported directly into `result/2015_2020/pic/`:
+Generate publication-quality 300 DPI figures exported directly into categorized subdirectories under `result/2015_2020/pic/`:
 ```bash
 # Generates publication-grade 50m layers, depth profiles, and T-S figures
 python visualize.py --mode test --years 2015 2016 2017 2018 2019 2020 --all
 ```
 
-**Generated Figure Suite**:
-* **`fig1_depth_layers_50m_temp.png`**: 50m-interval layer-by-layer horizontal depth slice evaluation for temperature (0–1000m overview across key depth layers: 0, 50, 100, 150, 200, 300, 400, 500, 750, 1000m);
-* **`fig1_depth_layers_50m_sal.png`**: 50m-interval layer-by-layer horizontal depth slice evaluation for salinity (0–1000m overview across key depth layers);
-* **`fig3_layer_metrics_depth.png`**: Continuous layer-wise RMSE(z), MAE(z), and $R^2(z)$ profiles across 0–1000m depth;
-* **`fig4_multi_station_profiles.png`**: Multi-station profile array comparing 4 contrasting dynamic regimes (Kuroshio Jet, Subtropical Warm Pool, Subarctic Water, Open Ocean Center);
-* **`fig5_ts_diagram.png`**: Temperature-Salinity (T-S) water mass diagram with potential density ($\sigma_\theta$) isopycnal contours;
-* **`fig6_scatter_density.png`**: Full-depth Hexbin scatter density plot with 1:1 reference line.
+**Generated Figure Suite (Categorized by Function)**:
+* **`01_spatial_layers/`** (Subsurface Horizontal Slices):
+  * **`Fig01_depth_layers_50m_temp.png`**: 50m-interval layer-by-layer horizontal depth slice evaluation for temperature (0–1000m overview across key depth layers: 0, 50, 100, 150, 200, 300, 400, 500, 750, 1000m);
+  * **`Fig02_depth_layers_50m_sal.png`**: 50m-interval layer-by-layer horizontal depth slice evaluation for salinity (0–1000m overview across key depth layers);
+* **`02_vertical_profiles/`** (Vertical Profiles & Error Metrics):
+  * **`Fig03_layer_metrics_depth.png`**: Continuous layer-wise RMSE(z), MAE(z), and $R^2(z)$ profiles across 0–1000m depth;
+  * **`Fig04_multi_station_profiles.png`**: Multi-station profile array comparing 4 contrasting dynamic regimes (Kuroshio Jet, Subtropical Warm Pool, Subarctic Water, Open Ocean Center);
+* **`03_physical_diagnostics/`** (Physical Consistency & Correlation):
+  * **`Fig05_ts_diagram.png`**: Temperature-Salinity (T-S) water mass diagram with potential density ($\sigma_\theta$) isopycnal contours;
+  * **`Fig06_scatter_density.png`**: Full-depth Hexbin scatter density plot with 1:1 reference line.
 
 ### 6.7 GLORYS 3-D Continuous Super-Resolution & Spatial Downscaling
 Empowered by continuous Fourier depth embeddings and sub-pixel neural decoding, the framework supports arbitrary horizontal downscaling (e.g. 2x, 4x from 1/12° to 1/24° or 1/48°) and arbitrary vertical regular voxel interpolation (e.g. 10m or 5m intervals):
@@ -413,11 +420,11 @@ Evaluates 4 contrasting paradigms: 3-D Trilinear Interpolation, Pure-CNN (2D CNN
 python benchmark.py --years 2015 2016 2017 2018 2019 2020 --mode test
 ```
 
-**Benchmark Visualization Artifacts** (saved in `result/<year_tag>/pic/`):
-* **`fig_superiority_radar.png`**: Multi-model 6-dimensional superiority radar chart;
-* **`fig_physics_stability_transect.png`**: 35°N Kuroshio vertical transect stability & convective instability patch ($N^2 < 0$) overlay;
-* **`fig_glorys_super_resolution_comparison.png`**: High-resolution super-resolution comparison with mesoscale eddy inset zoom;
-* **`fig_superiority_bar_summary.png`**: Key metric error reduction & ablation improvement bar summary;
+**Benchmark Visualization Artifacts** (saved in `result/<year_tag>/pic/04_superiority_benchmark/`):
+* **`Fig07_superiority_radar.png`**: Multi-model 6-dimensional superiority radar chart;
+* **`Fig08_physics_stability_transect.png`**: 35°N Kuroshio vertical transect stability & convective instability patch ($N^2 < 0$) overlay;
+* **`Fig09_glorys_super_resolution.png`**: High-resolution super-resolution comparison with mesoscale eddy inset zoom;
+* **`Fig10_superiority_bar_summary.png`**: Key metric error reduction & ablation improvement bar summary;
 * **Reports**: `result/<year_tag>/log/benchmark_summary.json` and `benchmark_report.md`.
 
 ---

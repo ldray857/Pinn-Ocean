@@ -299,15 +299,16 @@ def run_benchmark():
 
     # 7. Generate 4 Publication-Grade Visualizations
     pic_dir = res_dirs['pic_dir']
-    os.makedirs(pic_dir, exist_ok=True)
-    print(f"\nExporting 4 academic comparison figures to: {pic_dir} ...")
+    benchmark_pic_dir = os.path.join(pic_dir, "04_superiority_benchmark")
+    os.makedirs(benchmark_pic_dir, exist_ok=True)
+    print(f"\nExporting 4 academic comparison figures to: {benchmark_pic_dir} ...")
 
-    # Fig 1: Radar Chart
-    radar_path = os.path.join(pic_dir, "fig_superiority_radar.png")
+    # Fig 7: Radar Chart
+    radar_path = os.path.join(benchmark_pic_dir, "Fig07_superiority_radar.png")
     plot_superiority_radar(radar_scores, radar_path)
 
-    # Fig 2: Vertical Transect Stratification Stability
-    transect_path = os.path.join(pic_dir, "fig_physics_stability_transect.png")
+    # Fig 8: Vertical Transect Stratification Stability
+    transect_path = os.path.join(benchmark_pic_dir, "Fig08_physics_stability_transect.png")
     lat_idx = int(np.argmin(np.abs(lats - args.slice_lat)))
     true_t_sec = targets_t[0, :, lat_idx, :]
     true_s_sec = targets_s[0, :, lat_idx, :]
@@ -320,8 +321,8 @@ def run_benchmark():
         models_pred=models_sec, slice_lat=lats[lat_idx], output_path=transect_path
     )
 
-    # Fig 3: GLORYS Super-Resolution Comparison (100m Depth Thermocline)
-    sr_path = os.path.join(pic_dir, "fig_glorys_super_resolution_comparison.png")
+    # Fig 9: GLORYS Super-Resolution Comparison (100m Depth Thermocline)
+    sr_path = os.path.join(benchmark_pic_dir, "Fig09_glorys_super_resolution.png")
     d_idx = int(np.argmin(np.abs(depths - 100.0)))
     coarse_slice = targets_t[0, d_idx]
     # Simulate high-res target coordinates (2x)
@@ -333,7 +334,6 @@ def run_benchmark():
     pinn_hr_3d = models_data["Swin-Ocean-PINN (本项目模型)"][0][0]
     pinn_fine_slice = interpolator.interpolate_field(pinn_hr_3d, depths[d_idx:d_idx+1], fine_lats, fine_lons, method='physics_regularized')[0]
 
-
     plot_glorys_super_resolution_comparison(
         lons_coarse=lons, lats_coarse=lats, field_coarse=coarse_slice,
         lons_fine=fine_lons, lats_fine=fine_lats,
@@ -341,8 +341,8 @@ def run_benchmark():
         output_path=sr_path, depth_m=float(depths[d_idx])
     )
 
-    # Fig 4: Superiority Bar Summary
-    bar_path = os.path.join(pic_dir, "fig_superiority_bar_summary.png")
+    # Fig 10: Superiority Bar Summary
+    bar_path = os.path.join(benchmark_pic_dir, "Fig10_superiority_bar_summary.png")
     plot_superiority_bar_summary(benchmark_results, bar_path)
 
     # 8. Save JSON & Markdown Report
@@ -371,7 +371,12 @@ def run_benchmark():
         "1. **物理一致性显著跃升**：Swin-Ocean-PINN 引入 TEOS-10 局地中点浮力频率 $N^2$ 约束后，将对流失稳率（CIR）从基线模型的 **8.5%~13.8%** 压制至仅 **1.11%**（高度吻合物理真值的 0.92%），降低了 **85% 以上的物理失真**；",
         "2. **彻底根除深水虚假逆温**：深层单调性违背率（TMV）仅为 **0.009%**，相比传统纯数据模型的 3.2%~5.8% 实现了质的突破；",
         "3. **主跃层非单调盐度精准拟合**：在 100–400m 温跃层与次表层高盐核心区，实用盐度 RMSE 降至 **0.0828 PSU**，相比传统无物理消融模型提升达 **29.4%**；",
-        "4. **连续插值高分超分辨力**：连续坐标神经解码消除了传统三线性插值的马赛克阶梯伪影与三次样条的 Runge 振荡，在 1/24° 高分网格下保持光滑清晰的锋面梯度。"
+        "4. **连续插值高分超分辨力**：连续坐标神经解码消除了传统三线性插值的马赛克阶梯伪影与三次样条的 Runge 振荡，在 1/24° 高分网格下保持光滑清晰的锋面梯度。",
+        "\n## 3. 评测学术图件索引 (pic/04_superiority_benchmark/)",
+        "- **Fig07**：`../pic/04_superiority_benchmark/Fig07_superiority_radar.png` (多模型全维度学术优度六维雷达对比图)",
+        "- **Fig08**：`../pic/04_superiority_benchmark/Fig08_physics_stability_transect.png` (黑潮断面对流失稳斑块横向对比图)",
+        "- **Fig09**：`../pic/04_superiority_benchmark/Fig09_glorys_super_resolution.png` (GLORYS 连续超分与局部放大对比图)",
+        "- **Fig10**：`../pic/04_superiority_benchmark/Fig10_superiority_bar_summary.png` (关键指标误差缩减与消融提升柱状图)"
     ])
     with open(report_path, "w", encoding="utf-8") as f_rep:
         f_rep.write("\n".join(report_lines))

@@ -61,7 +61,7 @@ flowchart LR
 ---
 
 ### 第 4 页：阶段成果一：全域三维温盐立体高保真反演（Breakthrough 1）
-- **版面设计**：左侧展示指标表格，右侧放置 `fig4_multi_station_profiles.png`（四大动力学区剖面）与 `fig6_scatter_density.png`。
+- **版面设计**：左侧展示指标表格，右侧放置 `Fig04_multi_station_profiles.png`（四大动力学区剖面）与 `Fig06_scatter_density.png`。
 - **精简文案要点**：
   * **数据规模**：2015–2020 年西北太平洋六年连续时序全量训练（72 个月，逾 816 万立体网格点验证）；
   * **精度指标跃升**：全水深温度 $R^2 = 0.9481$（RMSE 1.54°C），实用盐度 $R^2 = 0.8799$（RMSE 0.1045 PSU）；
@@ -72,7 +72,7 @@ flowchart LR
 ---
 
 ### 第 5 页：阶段成果二：GLORYS 连续空间-垂向插值高分超分辨力（Breakthrough 2）
-- **版面设计**：放置 `fig_glorys_super_resolution_comparison.png`（四格对比：原始粗网格、三线性、三次样条、Swin-PINN 高分及局部放大 Inset）。
+- **版面设计**：放置 `Fig09_glorys_super_resolution.png`（四格对比：原始粗网格、三线性、三次样条、Swin-PINN 高分及局部放大 Inset）。
 - **精简文案要点**：
   * **打破 1/12° 分辨率边界**：连续神经解码器支持水平 $2\times / 4\times$ 任意倍率空间降尺度超分（提升至 1/24° ~ 1/48°）；
   * **消除阶梯马赛克与 Runge 振荡**：相比经典三线性插值的网格伪影和样条插值的虚假过冲，本模型输出连续光滑的锋面梯度；
@@ -83,7 +83,7 @@ flowchart LR
 ---
 
 ### 第 6 页：阶段成果三：双格式 CF-1.8 资产与 ArcGIS Pro 多维体素孪生（Breakthrough 3）
-- **版面设计**：展示 ArcGIS Pro 3.x 3D Voxel Layer 渲染实景截图与 `fig_glorys_super_resolution_comparison.png`。
+- **版面设计**：展示 ArcGIS Pro 3.x 3D Voxel Layer 渲染实景截图与 `Fig09_glorys_super_resolution.png`。
 - **精简文案要点**：
   * **真值对齐版（35层）**：完全兼容 GLORYS 原生物理坐标，用于残差分析与定量制图；
   * **严格等距体素版（101层）**：以 10m 严格等距立体导出，**原生完美适配 ArcGIS Pro 3.x 体素图层**，消除不规则几何畸变警告；
@@ -94,7 +94,7 @@ flowchart LR
 ---
 
 ### 第 7 页：系统评测：多模型综合学术优度对比实证（Superiority Benchmark）
-- **版面设计**：左侧放置 `fig_superiority_radar.png`（六维优度雷达图），右侧放置多模型评测对比总表。
+- **版面设计**：左侧放置 `Fig07_superiority_radar.png`（六维优度雷达图），右侧放置多模型评测对比总表。
 - **精简文案要点**：
   * **构建严谨对照体系**：三维经典插值（Trilinear） + 纯卷积无物理（Pure-CNN） + 无物理自注意力消融（Pure-Swin） + 全配置（Swin-Ocean-PINN）；
   * **综合优度全面领先**：综合学术优度评分达 **88.6 分**，显著超越 Pure-Swin（76.2分）、Pure-CNN（68.5分）和经典插值（58.2分）；
@@ -105,7 +105,7 @@ flowchart LR
 ---
 
 ### 第 8 页：物理可解释性：彻底根除大洋虚假逆密与逆温（Physics Consistency）
-- **版面设计**：放置 `fig_physics_stability_transect.png`（35°N 黑潮垂直断面红斑失稳对照）与 `fig_superiority_bar_summary.png`。
+- **版面设计**：放置 `Fig08_physics_stability_transect.png`（35°N 黑潮垂直断面红斑失稳对照）与 `Fig10_superiority_bar_summary.png`。
 - **精简文案要点**：
   * **局地浮力频率约束（$N^2$）**：采用 TEOS-10 局地中点压力算法，消除中深层热压虚假倒置；
   * **对流失稳率（CIR）骤降 85%**：纯数据模型的失稳率高达 8.5%~13.8%，而本项目模型压制至 **1.11%**（与真实大洋 GLORYS 的 0.92% 完美吻合）；
@@ -121,8 +121,8 @@ flowchart LR
   * [x] **数据工程与长周期对齐**：完成 2015–2020 六年 5 要素数据流式下载与标准化；
   * [x] **耦合模型研发与闭环训练**：完成 Swin Transformer 与连续 PINN 的算子融合与自适应多任务优化；
   * [x] **GLORYS 插值高分超分辨力**：实现空间 2x/4x 降尺度与垂向 10m/5m 规则体素插值；
-  * [x] **开源代码与单元测试套件**：代码规范开源并提交至 `main` 分支，通过 9 项全流程自动化测试；
-  * [x] **GIS 双格式资产与图件产出**：输出 13 组学术图件及两套 ArcGIS Pro 3.x 兼容 NetCDF4 成果。
+  * [x] **开源代码与单元测试套件**：代码规范开源并已同步至工作分支，通过全流程自动化自检；
+  * [x] **GIS 双格式资产与图件产出**：输出 10 组分类归档的学术图件及两套 ArcGIS Pro 3.x 兼容 NetCDF4 成果。
 - **汇报台词要点（45秒）**：
   > “对照立项计划书的中期考核指标，本项目在数据准备、架构搭建、物理嵌入、高分插值扩展以及三维 GIS 资产生成等全部任务上均已 100% 达成，甚至超额完成了长时序六年度扩容与超分辨率高分模块开发，通过了包含 9 项严格测试的自动化代码套件。”
 

@@ -282,7 +282,11 @@ Pinn-Ocean/
 │   └── 2015_2020/             # 2015–2020 六年期训练成果包
 │       ├── checkpoints/       # 最优模型权重 (swin_ocean_pinn_best.pth)
 │       ├── log/               # 训练与评估日志 (train.log, eval.log, metrics_detailed.json)
-│       ├── pic/               # 学术出版级科研对比图件与评测图件
+│       ├── pic/               # 学术出版级科研对比图件与评测图件 (按功能分类于 4 个子目录)
+│       │   ├── 01_spatial_layers/        # Fig01 ~ Fig02: 50m 逐层水平反演切片
+│       │   ├── 02_vertical_profiles/     # Fig03 ~ Fig04: 垂向结构与逐层误差分布
+│       │   ├── 03_physical_diagnostics/  # Fig05 ~ Fig06: 温盐物理诊断与相关性统计
+│       │   └── 04_superiority_benchmark/ # Fig07 ~ Fig10: 多模型学术优度与超分评测
 │       └── con/               # 3D 立体反演 NetCDF 与 ArcGIS Pro 10m 体素数据
 ├── download_data.py           # CMEMS 开阔太平洋多源遥感与 3D 再分析数据自动化下载脚本
 ├── train.py                   # 完整模型训练主入口 (支持多卡加速与主动物理约束)
@@ -382,19 +386,22 @@ python predict.py --mode test --years 2015 2016 2017 2018 2019 2020 --export_reg
 ```
 
 ### 6.6 顶刊级科学可视化绘图
-自动生成符合顶级学术期刊与中期报告规范的 300 DPI 高清科研图件，保存于 `result/2015_2020/pic/`：
+自动生成符合顶级学术期刊与中期报告规范的 300 DPI 高清科研图件，分类保存于 `result/2015_2020/pic/` 的功能子目录中：
 ```bash
 # 一键生成 50m 逐层切片、指标廓线、剖面及温盐关系图件
 python visualize.py --mode test --years 2015 2016 2017 2018 2019 2020 --all
 ```
 
-**生成的科研图件清单**：
-* **`fig1_depth_layers_50m_temp.png`**：50 米间隔水平逐层切片温度对比总览图（0–1000m，精选代表层：0, 50, 100, 150, 200, 300, 400, 500, 750, 1000m）；
-* **`fig1_depth_layers_50m_sal.png`**：50 米间隔水平逐层切片盐度对比总览图（0–1000m，精选代表层）；
-* **`fig3_layer_metrics_depth.png`**：全水深 0–1000m 逐层连续的 RMSE(z)、MAE(z) 与 $R^2(z)$ 误差分布廓线；
-* **`fig4_multi_station_profiles.png`**：四大典型动力学特征区（黑潮急流轴、副热带暖水池、亲潮冷水区、外海大洋中心）垂直剖面阵列对比；
-* **`fig5_ts_diagram.png`**：全海域温盐关系 (T-S Diagram) 水团相图与潜在密度等值线 ($\sigma_\theta$) 叠置图；
-* **`fig6_scatter_density.png`**：全深度 Hexbin 散点热力密度与 1:1 理想参考线。
+**生成的科研图件清单（按功能分类归档）**：
+* **`01_spatial_layers/`**（空间逐层水平反演切片）：
+  * **`Fig01_depth_layers_50m_temp.png`**：50 米间隔水平逐层切片温度对比总览图（0–1000m，精选代表层：0, 50, 100, 150, 200, 300, 400, 500, 750, 1000m）；
+  * **`Fig02_depth_layers_50m_sal.png`**：50 米间隔水平逐层切片盐度对比总览图（0–1000m，精选代表层）；
+* **`02_vertical_profiles/`**（垂向结构与逐层误差分布）：
+  * **`Fig03_layer_metrics_depth.png`**：全水深 0–1000m 逐层连续的 RMSE(z)、MAE(z) 与 $R^2(z)$ 误差分布廓线；
+  * **`Fig04_multi_station_profiles.png`**：四大典型动力学特征区（黑潮急流轴、副热带暖水池、亲潮冷水区、外海大洋中心）垂直剖面阵列对比；
+* **`03_physical_diagnostics/`**（温盐物理诊断与全域统计验证）：
+  * **`Fig05_ts_diagram.png`**：全海域温盐关系 (T-S Diagram) 水团相图与潜在密度等值线 ($\sigma_\theta$) 叠置图；
+  * **`Fig06_scatter_density.png`**：全深度 Hexbin 散点热力密度与 1:1 理想参考线。
 
 ### 6.7 GLORYS 三维空间-垂向连续插值高分超分辨率 (Super-Resolution)
 基于连续傅里叶深度嵌入与亚像素空间神经算子，支持对 GLORYS 场进行任意空间倍率（如 2x、4x）的水平连续降尺度超分，以及垂直任意深度（如 10m、5m 等距规则体素）的高密连续插值：
@@ -416,11 +423,11 @@ python predict.py --mode test --years 2015 2016 2017 2018 2019 2020 --super_res_
 python benchmark.py --years 2015 2016 2017 2018 2019 2020 --mode test
 ```
 
-**生成的 4 组核心优度评测图件**（保存于 `result/<year_tag>/pic/`）：
-* **`fig_superiority_radar.png`**：多模型全维度学术优度六维雷达对比图；
-* **`fig_physics_stability_transect.png`**：35°N 黑潮延伸体垂直断面失稳斑块（$N^2 < 0$）多模型横向对比图；
-* **`fig_glorys_super_resolution_comparison.png`**：GLORYS 插值高分超分辨力局部放大细节对比图；
-* **`fig_superiority_bar_summary.png`**：关键指标误差缩减与消融提升柱状图；
+**生成的 4 组核心优度评测图件**（保存于 `result/<year_tag>/pic/04_superiority_benchmark/`）：
+* **`Fig07_superiority_radar.png`**：多模型全维度学术优度六维雷达对比图；
+* **`Fig08_physics_stability_transect.png`**：35°N 黑潮延伸体垂直断面失稳斑块（$N^2 < 0$）多模型横向对比图；
+* **`Fig09_glorys_super_resolution.png`**：GLORYS 插值高分超分辨力局部放大细节对比图；
+* **`Fig10_superiority_bar_summary.png`**：关键指标误差缩减与消融提升柱状图；
 * **学术评测报告**：自动输出 `result/<year_tag>/log/benchmark_summary.json` 与 `benchmark_report.md`。
 
 ---
