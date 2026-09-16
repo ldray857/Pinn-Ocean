@@ -4,12 +4,27 @@ Dataset module for Pinn-Ocean
 Loads multi-source satellite observations and 3-D ocean reanalysis data from NetCDF files.
 """
 
+try:
+    import h5py  # Pre-load HDF5 DLLs on Windows before xarray backend initialization
+except ImportError:
+    pass
+
 import os
 import torch
 import numpy as np
 import xarray as xr
 from torch.utils.data import Dataset
 from typing import Optional, List, Union
+
+
+def _safe_open_dataset(file_path: str) -> xr.Dataset:
+    """Safely open NetCDF dataset trying h5netcdf first (to prevent Windows netCDF4 DLL issues)."""
+    for engine in ("h5netcdf", "netcdf4", "scipy"):
+        try:
+            return xr.open_dataset(file_path, engine=engine)
+        except Exception:
+            continue
+    return xr.open_dataset(file_path)
 
 
 KNOWN_DATASET_PREFIXES = [
@@ -63,7 +78,7 @@ def _resolve_and_load_dataset(target_path: Optional[str], default_filename: str,
         xr.Dataset or None if file cannot be found.
     """
     if target_path and os.path.isfile(target_path):
-        return xr.open_dataset(target_path)
+        return _safe_open_dataset(target_path)
 
     if target_path and os.path.isdir(target_path):
         check_dir = target_path
@@ -99,7 +114,7 @@ def _resolve_and_load_dataset(target_path: Optional[str], default_filename: str,
             yr_dir = os.path.join(check_dir, d)
             yr_file = _find_matching_file(yr_dir, prefix, year=d)
             if yr_file and os.path.isfile(yr_file):
-                loaded_datasets.append(xr.open_dataset(yr_file))
+                loaded_datasets.append(_safe_open_dataset(yr_file))
 
         if len(loaded_datasets) > 1:
             print(f"[Dataset] Concatenating {len(loaded_datasets)} yearly files for '{prefix}' across: {subdirs}")
@@ -110,7 +125,7 @@ def _resolve_and_load_dataset(target_path: Optional[str], default_filename: str,
     # 2. Direct file check within check_dir
     direct_match = _find_matching_file(check_dir, prefix)
     if direct_match and os.path.isfile(direct_match):
-        return xr.open_dataset(direct_match)
+        return _safe_open_dataset(direct_match)
 
     return None
 
