@@ -7,9 +7,15 @@ Performs full-grid 3D subsurface temperature and salinity reconstruction
 and exports results as standard CF-compliant NetCDF4 files for GIS/oceanographic analysis.
 """
 
+try:
+    import h5py
+except ImportError:
+    pass
+
 import os
 import sys
 import argparse
+from typing import Optional
 import torch
 import numpy as np
 import xarray as xr
@@ -20,6 +26,21 @@ from pinn_ocean.models.swin_ocean_pinn import SwinOceanPINN
 from pinn_ocean.models.super_resolution import ContinuousSpaceDepthSuperResolver
 from pinn_ocean.datasets.ocean_dataset import OceanContinuousDataset
 from pinn_ocean.utils import get_result_dirs
+
+
+def _safe_to_netcdf(ds: xr.Dataset, path: str, encoding: Optional[dict] = None):
+    """
+    Safely export Dataset to NetCDF4 file, trying h5netcdf first to bypass
+    Windows netCDF4 C DLL symbol resolution conflicts (ERROR_PROC_NOT_FOUND).
+    """
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    for eng in ("h5netcdf", "netcdf4", "scipy"):
+        try:
+            ds.to_netcdf(path, engine=eng, encoding=encoding)
+            return
+        except Exception:
+            continue
+    ds.to_netcdf(path, encoding=encoding)
 
 
 
@@ -293,7 +314,7 @@ def predict_and_export():
     })
 
     print(f"\nWriting reconstructed dataset to NetCDF4 file: {output_file} ...")
-    out_ds.to_netcdf(output_file, engine="netcdf4", encoding=encoding)
+    _safe_to_netcdf(out_ds, output_file, encoding=encoding)
 
     file_size_mb = os.path.getsize(output_file) / (1024 * 1024)
     print(f"--> [Success] Aligned NetCDF Export complete! File size: {file_size_mb:.2f} MB")
@@ -364,7 +385,7 @@ def predict_and_export():
         })
 
         print(f"\nWriting strictly regular equal-interval dataset to NetCDF4: {reg_file} ...")
-        reg_ds.to_netcdf(reg_file, engine="netcdf4", encoding=reg_encoding)
+        _safe_to_netcdf(reg_ds, reg_file, encoding=reg_encoding)
 
         reg_size_mb = os.path.getsize(reg_file) / (1024 * 1024)
         print(f"--> [Success] Regular Voxel NetCDF Export complete! File size: {reg_size_mb:.2f} MB")
@@ -428,7 +449,7 @@ def predict_and_export():
             "longitude": {"_FillValue": None, "dtype": "float32"},
             "time": {"_FillValue": None, "dtype": "float64"}
         })
-        sr_ds.to_netcdf(sr_file, engine="netcdf4", encoding=sr_encoding)
+        _safe_to_netcdf(sr_ds, sr_file, encoding=sr_encoding)
         sr_size_mb = os.path.getsize(sr_file) / (1024 * 1024)
         print(f"--> [Success] Super-Resolved NetCDF Export complete! File size: {sr_size_mb:.2f} MB ({sr_file})")
 
