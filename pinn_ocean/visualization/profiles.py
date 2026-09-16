@@ -94,3 +94,101 @@ def plot_vertical_profiles(
     plt.savefig(save_path, dpi=300)
     plt.close()
     return save_path
+
+
+def plot_multi_station_profiles(
+    true_t, pred_t, true_s, pred_s, depths, lons, lats,
+    stations=None,
+    save_path="result/pic/fig4_multi_station_profiles.png"
+):
+    """
+    Plots multi-station vertical profile comparisons across 4 contrasting
+    oceanographic dynamic regimes in the Northwest Pacific.
+
+    Default Stations:
+    1. Kuroshio Jet Axis (黑潮延伸体急流轴): 148.0°E, 35.0°N (Strong shear & eddy interaction)
+    2. Subtropical Warm Pool (亚热带再循环暖水区): 158.0°E, 32.0°N (Thick mixed layer, stable stratification)
+    3. Subarctic Cold Water (北侧冷水边缘区): 152.0°E, 38.5°N (Shallow thermocline, cold subsurface)
+    4. Open Ocean Center (开阔大洋中心区): 162.0°E, 35.5°N (Representative baseline)
+
+    Args:
+        true_t, pred_t: (D, H, W) temperature fields
+        true_s, pred_s: (D, H, W) salinity fields
+        depths: (D,) depth array
+        lons: (W,) longitude array
+        lats: (H,) latitude array
+        stations: optional list of dicts with 'name', 'lon', 'lat'
+        save_path: output filepath
+    """
+    if stations is None:
+        stations = [
+            {"name": "站位A: 黑潮急流主轴区", "lon": 148.0, "lat": 35.0},
+            {"name": "站位B: 亚热带暖水再循环区", "lon": 158.0, "lat": 32.0},
+            {"name": "站位C: 北侧亚极地过渡冷区", "lon": 152.0, "lat": 38.5},
+            {"name": "站位D: 开阔大洋中心区", "lon": 162.0, "lat": 35.5}
+        ]
+
+    D, H, W = true_t.shape
+    num_stations = len(stations)
+
+    fig, axes = plt.subplots(2, num_stations, figsize=(5.2 * num_stations, 10.5), sharey=True, dpi=300)
+
+    for col_idx, st in enumerate(stations):
+        target_lon = st["lon"]
+        target_lat = st["lat"]
+        w_idx = int(np.argmin(np.abs(lons - target_lon)))
+        h_idx = int(np.argmin(np.abs(lats - target_lat)))
+        actual_lon = float(lons[w_idx])
+        actual_lat = float(lats[h_idx])
+
+        t_true_prof = true_t[:, h_idx, w_idx]
+        t_pred_prof = pred_t[:, h_idx, w_idx]
+        s_true_prof = true_s[:, h_idx, w_idx]
+        s_pred_prof = pred_s[:, h_idx, w_idx]
+
+        t_rmse = float(np.sqrt(np.mean((t_pred_prof - t_true_prof) ** 2)))
+        s_rmse = float(np.sqrt(np.mean((s_pred_prof - s_true_prof) ** 2)))
+        r_t = float(np.corrcoef(t_pred_prof, t_true_prof)[0, 1]) if np.std(t_pred_prof) > 1e-6 else 1.0
+        r_s = float(np.corrcoef(s_pred_prof, s_true_prof)[0, 1]) if np.std(s_pred_prof) > 1e-6 else 1.0
+
+        # Row 0: Temperature Profiles
+        ax_t = axes[0, col_idx]
+        ax_t.plot(t_true_prof, depths, 'k--', lw=2.2, label='GLORYS12V1 真值')
+        ax_t.plot(t_pred_prof, depths, '#e74c3c', lw=2.6, label='PINN 重构')
+        ax_t.grid(True, linestyle=":", alpha=0.6)
+        ax_t.set_title(f"{st['name']}\n({actual_lon:.1f}°E, {actual_lat:.1f}°N)", fontsize=11, fontweight='bold')
+        ax_t.set_xlabel("位温 Temperature (°C)", fontsize=10)
+        if col_idx == 0:
+            ax_t.set_ylabel("水深 Depth (m)", fontsize=11)
+            ax_t.legend(loc='lower left', fontsize=9.5)
+
+        info_t = f"$R = {r_t:.4f}$\n$\\mathrm{{RMSE}} = {t_rmse:.2f}^\\circ\\mathrm{{C}}$"
+        ax_t.text(0.06, 0.72, info_t, transform=ax_t.transAxes, fontsize=9.5,
+                  bbox=dict(boxstyle='round,pad=0.4', facecolor='white', alpha=0.88, edgecolor='#bdc3c7'))
+
+        # Row 1: Salinity Profiles
+        ax_s = axes[1, col_idx]
+        ax_s.plot(s_true_prof, depths, 'k--', lw=2.2, label='GLORYS12V1 真值')
+        ax_s.plot(s_pred_prof, depths, '#2980b9', lw=2.6, label='PINN 重构')
+        ax_s.grid(True, linestyle=":", alpha=0.6)
+        ax_s.set_title(f"盐度剖面 ({actual_lon:.1f}°E, {actual_lat:.1f}°N)", fontsize=11)
+        ax_s.set_xlabel("实用盐度 Salinity (PSU)", fontsize=10)
+        if col_idx == 0:
+            ax_s.set_ylabel("水深 Depth (m)", fontsize=11)
+            ax_s.legend(loc='lower left', fontsize=9.5)
+
+        info_s = f"$R = {r_s:.4f}$\n$\\mathrm{{RMSE}} = {s_rmse:.4f}\\ \\mathrm{{PSU}}$"
+        ax_s.text(0.06, 0.72, info_s, transform=ax_s.transAxes, fontsize=9.5,
+                  bbox=dict(boxstyle='round,pad=0.4', facecolor='white', alpha=0.88, edgecolor='#bdc3c7'))
+
+    axes[0, 0].set_ylim(1000.0, 0.0)  # Inverted depth: surface 0m on top, 1000m at bottom
+
+    fig.suptitle("Swin-Ocean-PINN 西北太平洋四大典型动力学特征站位三维垂向温盐剖面对比 (0-1000m)",
+                 fontsize=14, fontweight='bold', y=0.98)
+    plt.tight_layout()
+
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.savefig(save_path, dpi=300)
+    plt.close(fig)
+    return save_path
+

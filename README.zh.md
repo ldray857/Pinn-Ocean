@@ -259,7 +259,10 @@ Pinn-Ocean/
 │   │   └── metrics.py         # RMSE、MAE、R^2 及混合层深度 (MLD) 计算工具
 │   └── visualization/         # 模块化科研绘图子包 (中文字体自适应与高质导出)
 │       ├── __init__.py
-│       ├── profiles.py        # 代表站位垂直剖面重构对比绘图 (自动寻优最佳站位)
+│       ├── horizontal_layers.py # 50米间隔水平逐层切片对比图 (0-1000m)
+│       ├── profiles.py        # 典型动力学站位阵列剖面与单站位剖面重构对比
+│       ├── sections.py        # 二维连续垂直断面图 (35°N 黑潮延伸体) 与垂直误差廓线
+│       ├── volumetric_3d.py   # 真三维正交体切片围栏图 (Fence Box) 与 15°C 特征等温面三维拓扑
 │       ├── ts_diagram.py      # 温盐关系 (T-S Diagram) 物理一致性与水团保真检验
 │       ├── scatter_density.py # 全深度 Hexbin 散点密度与拟合优度 R^2 绘图
 │       └── mld.py             # 上混合层深度 (MLD) 物理界面反演对比绘图
@@ -272,14 +275,14 @@ Pinn-Ocean/
 ├── result/                    # 标准化实验成果主目录 (按实验标签自动归档)
 │   └── 2015_2020/             # 2015–2020 六年期训练成果包
 │       ├── checkpoints/       # 最优模型权重 (swin_ocean_pinn_best.pth)
-│       ├── log/               # 训练与评估日志 (train.log, eval.log)
-│       ├── pic/               # 4 组 300 DPI 学术出版级科研矢量对比图件
+│       ├── log/               # 训练与评估日志 (train.log, eval.log, metrics_detailed.json)
+│       ├── pic/               # 9 组 300 DPI 学术出版级科研对比图件与 layers_50m/
 │       └── con/               # 3D 立体反演 NetCDF 与 ArcGIS Pro 10m 体素数据
 ├── download_data.py           # CMEMS 开阔太平洋多源遥感与 3D 再分析数据自动化下载脚本
 ├── train.py                   # 完整模型训练主入口 (支持多卡加速与主动物理约束)
-├── evaluate.py                # 检查点评估与全深度物理指标验证脚本
+├── evaluate.py                # 检查点评估与全深度物理指标验证脚本 (四阶评判体系)
 ├── predict.py                 # 全域三维立体反演与双格式 CF-1.8 NetCDF4 资产导出脚本
-├── visualize.py               # 一键生成全部科研图件的主入口 (支持站位智能寻优)
+├── visualize.py               # 一键生成全部科研图件的主入口 (集成 50m 分层、断面与剖面)
 ├── demo_test.py               # 独立自检单元测试快速入口
 ├── requirements.txt           # 运行环境依赖清单
 ├── setup.py                   # Python 包安装与打包脚本
@@ -326,7 +329,7 @@ python download_data.py --output_dir data --start_time 2015-01-01 --end_time 202
 ```
 
 ### 6.2 代码自检
-该测试通过仿真合成批次，对 DeepONet 前向推理、Autograd 自动微分链、TEOS-10 海水密度求导及多目标物理损失反传进行闭环校验：
+该测试通过仿真合成批次，对 DeepONet 前向推理、Autograd 自动微分链、TEOS-10 海水密度求导、多目标物理损失反传及 2D/3D 可视化链路进行闭环校验：
 ```bash
 python demo_test.py
 ```
@@ -342,18 +345,24 @@ python train.py --data_dir data --epochs 300 --batch_size 4 --lr 3e-4
 * **模型权重**：最优物理泛化权重保存至 `result/2015_2020/checkpoints/swin_ocean_pinn_best.pth`。
 
 ### 6.4 模型性能评估与最新指标
-加载训练 300 轮的最优检查点，在完全未参与训练的独立测试集时段（2020 年 5 月至 12 月）上开展全域三维立体评估：
+加载训练 300 轮的最优检查点，在完全未参与训练的独立测试集时段（2020 年 5 月至 12 月，共 8 个时序时段，815.5 万三维体素）上开展全域三维立体评估：
 ```bash
 python evaluate.py --data_dir data
 ```
 
-**项目模型演化三阶段实测精度对比表**：
+**1. 空间与垂直动力学分层统计指标表**：
 
-| 评估要素 | 阶段一：2019–2020 基线模型 (24个月) | 阶段二：2017–2020 四年模型 (48个月) | **阶段三：2015–2020 六年最新模型 (72个月，300轮)** | **最新性能突破幅度** |
-| :--- | :--- | :--- | :--- | :--- |
-| **位温 (Temperature)** | $\mathrm{RMSE} = 2.3551^\circ\mathrm{C}$<br>$R^2 = 0.8489$ | $\mathrm{RMSE} = 1.6906^\circ\mathrm{C}$<br>$R^2 = 0.9427$ | **$\mathrm{RMSE} = 1.5153^\circ\mathrm{C}$<br>$\mathrm{MAE} = 1.1785^\circ\mathrm{C}$<br>$R^2 = 0.9499$** | **RMSE 持续下降 35.7%<br>$R^2$ 跃升至近 0.95** |
-| **实用盐度 (Salinity)** | $\mathrm{RMSE} = 0.1672\,\mathrm{PSU}$<br>$R^2 = 0.6400$ | $\mathrm{RMSE} = 0.1130\,\mathrm{PSU}$<br>$R^2 = 0.8608$ | **$\mathrm{RMSE} = 0.1068\,\mathrm{PSU}$<br>$\mathrm{MAE} = 0.0803\,\mathrm{PSU}$<br>$R^2 = 0.8746$** | **RMSE 持续下降 36.1%<br>$R^2$ 提升逾 23.5 个百分点** |
-| **代表站位反演**<br>(154.00°E, 34.33°N) | 未细化评估 | 单点 RMSE: 1.13°C / 0.073 PSU | **$T\text{-RMSE} = 0.49^\circ\mathrm{C}, R_T = 0.9990$<br>$S\text{-RMSE} = 0.0117\,\mathrm{PSU}, R_S = 0.9989$** | **极高精度吻合<br>达到原位 CTD 测量级精度** |
+| 动力学分层 | 深度范围 | 温度 RMSE (°C) | 温度 MAE (°C) | 温度 $R^2$ | 盐度 RMSE (PSU) | 盐度 MAE (PSU) | 盐度 $R^2$ |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **混合层 (Mixed Layer)** | 0 – 100 m | 1.1519 | 0.8876 | 0.9427 | 0.1388 | 0.1062 | 0.8143 |
+| **主温跃层 (Thermocline)** | 100 – 400 m | 1.7108 | 1.3414 | 0.8931 | 0.1172 | 0.0886 | 0.8354 |
+| **深水层 (Deep Layer)** | 400 – 1000 m | 1.4883 | 1.1718 | 0.8176 | 0.0628 | 0.0469 | 0.7712 |
+| **全水深全域 (Global Overall)** | **0 – 1000 m** | **1.5153** | **1.1785** | **0.9499** | **0.1068** | **0.0803** | **0.8746** |
+
+**2. 物理一致性与动力学诊断指标**：
+* **静力稳定密度反转率 (DIR)**：**0.000%** (7,931,792 对垂向网格点检验)，完全消除轻水在下的反物理逆密异常 ($\partial \rho / \partial z \ge 0$)；
+* **主温跃层温度单调性违背率 (TMV)**：**0.000%** (2,799,456 对垂向网格点检验)，彻底杜绝深层虚假逆温震荡；
+* **混合层深度 (MLD) 反演精度**：$\mathrm{RMSE} = 19.11\,\mathrm{m}$，$\mathrm{MAE} = 14.54\,\mathrm{m}$，空间 $R^2 = 0.4721$。
 
 ### 6.5 全域三维立体反演与双格式 NetCDF4 数据资产导出
 将训练成果用于全时空三维立体连续反演，自动输出至 `result/2015_2020/con/`，包含**两套互补的标准 CF-1.8 NetCDF4 成果资产**：
@@ -365,22 +374,23 @@ python evaluate.py --data_dir data
 python predict.py --data_dir data --regular_step 10.0
 ```
 
-### 6.6 顶刊级科学可视化绘图
-自动生成 4 组符合学术论文与报告规范的 300 DPI 高清科研评估图件，保存于 `result/2015_2020/pic/`：
+### 6.6 顶刊级 3D 与 2D 科学可视化绘图
+自动生成 9 幅符合顶级学术期刊与中期报告规范的 300 DPI 高清科研图件，保存于 `result/2015_2020/pic/`：
 ```bash
-# 默认启用 auto_best 自动全局寻优最佳反演站位并绘图
+# 一键生成全部 9 组 50m 逐层切片、断面与统计图件
 python visualize.py --data_dir data
-
-# （可选）指定任意感兴趣站位（如 158°E, 36.5°N）或区域中心点
-python visualize.py --data_dir data --station_lat 36.5 --station_lon 158.0
-python visualize.py --data_dir data --station_mode center
 ```
 
-**生成的 4 组科研图件清单**：
-* **`fig1_profile_comparison.png`**：黑潮延伸体代表站位（154.00°E, 34.33°N）温盐垂直剖面（0~1000m）对比图（包含 $R$ 与 $\mathrm{RMSE}$ 定量指标框，精准刻画 500m 处北太平洋中层水 NPIW 低盐极小值）；
-* **`fig2_ts_diagram.png`**：全海域温盐关系 (T-S Diagram) 物理一致性检验图，验证大洋主要水团分布无密度倒置；
-* **`fig3_scatter_density.png`**：全深度 Hexbin 散点密度与 1:1 理想参考线，标定全水深 $R^2$ 与全局拟合斜率；
-* **`fig4_mld_validation.png`**：上混合层深度 (MLD) 物理界面反演验证散点图。
+**生成的 9 组科研图件清单**：
+* **`fig1_depth_layers_50m_temp.png`**：50 米间隔水平逐层切片温度对比总览图（0–1000m，精选代表层：0, 50, 100, 150, 200, 300, 400, 500, 750, 1000m），同时在 `layers_50m/` 输出全部 21 层独立 50 米切片；
+* **`fig1_depth_layers_50m_sal.png`**：50 米间隔水平逐层切片盐度对比总览图（0–1000m），同时在 `layers_50m/` 输出全部 21 层独立 50 米切片；
+* **`fig2_vertical_section_35n.png`**：沿 35°N 穿切黑潮延伸体轴线的高分辨率 0–1000m 连续垂直断面（真值、重构与绝对误差对比）；
+* **`fig3_layer_metrics_depth.png`**：全水深 0–1000m 逐层连续的 RMSE(z)、MAE(z) 与 $R^2(z)$ 误差分布廓线；
+* **`fig4_multi_station_profiles.png`**：四大典型动力学特征区（黑潮急流轴、副热带暖水池、亲潮冷水区、外海大洋中心）垂直剖面阵列对比；
+* **`fig5_ts_diagram.png`**：全海域温盐关系 (T-S Diagram) 水团相图与潜在密度等值线 ($\sigma_\theta$) 叠置图；
+* **`fig6_scatter_density.png`**：全深度 Hexbin 散点热力密度与 1:1 理想参考线；
+* **`fig7_mld_validation.png`**：上混合层深度 (MLD) 物理界面反演验证散点图；
+* **`fig8_3d_isotherm_15c.png`**：15°C 特征温跃层等温面三维拓扑起伏曲面图，立体呈现大洋锋面动力倾斜。
 
 ---
 

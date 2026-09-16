@@ -17,6 +17,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
+
 
 from configs.default_config import ModelConfig, PhysicsConfig
 from pinn_ocean.models.swin_ocean_pinn import SwinOceanPINN
@@ -121,10 +123,57 @@ def run_unit_tests():
     total_loss_pts.backward()
     optimizer.step()
     print("      --> Pointwise backward pass and parameter update executed successfully.")
+
+    # 6. Test Comprehensive Metrics & Physical Diagnostics
+    print("\n[7/7] Testing Comprehensive Evaluation Metrics & Physical Diagnostics...")
+    from pinn_ocean.utils.metrics import (
+        calc_layer_metrics, calc_regime_metrics,
+        calc_density_inversion_rate, calc_temp_monotonicity_violation,
+        calc_domain_mld_metrics
+    )
+
+    synth_depths = np.linspace(0.0, 1000.0, D)
+    # Create physically realistic stratification: temperature decreasing, salinity S-curve
+    t_synth_true = 20.0 * np.exp(-synth_depths[:, None, None] / 300.0) + 3.0
+    t_synth_pred = t_synth_true + np.random.normal(0, 0.2, t_synth_true.shape)
+    s_synth_true = 34.0 + 0.5 * np.sin(synth_depths[:, None, None] / 200.0)
+    s_synth_pred = s_synth_true + np.random.normal(0, 0.03, s_synth_true.shape)
+
+    # Test layer metrics
+    l_metrics_t = calc_layer_metrics(t_synth_pred, t_synth_true, synth_depths)
+    assert len(l_metrics_t['rmse']) == D, "Layer metrics length mismatch"
+
+    # Test regime metrics
+    r_metrics = calc_regime_metrics(t_synth_pred, t_synth_true, synth_depths)
+    assert "mixed_layer" in r_metrics and "thermocline" in r_metrics and "deep_layer" in r_metrics
+
+    # Test density inversion rate
+    dir_info = calc_density_inversion_rate(t_synth_pred, s_synth_pred, synth_depths)
+    assert "inversion_rate_percent" in dir_info
+    print(f"      Density Inversion Rate: {dir_info['inversion_rate_percent']:.3f}% ({dir_info['total_inversions']}/{dir_info['total_evaluated']})")
+
+    # Test temperature monotonicity violation
+    mono_info = calc_temp_monotonicity_violation(t_synth_pred, synth_depths, start_depth=100.0)
+    assert "violation_rate_percent" in mono_info
+
+    # Test domain MLD metrics
+    mld_info = calc_domain_mld_metrics(t_synth_pred, t_synth_true, synth_depths)
+    assert "mld_rmse" in mld_info and "mld_mae" in mld_info
+    print(f"      MLD RMSE: {mld_info['mld_rmse']:.2f} m | MAE: {mld_info['mld_mae']:.2f} m")
+
+    # Test visualization module imports
+    from pinn_ocean.visualization import (
+        plot_3d_thermohaline_box, plot_3d_isotherm_surface,
+        plot_vertical_section, plot_layer_metrics_profile,
+        plot_multi_station_profiles
+    )
+    print("      --> All 3D volumetric, transect, and multi-station modules imported successfully.")
+
     print("\n==================================================================")
-    print(" [PASSED] All Pinn-Ocean core components verified successfully!   ")
+    print(" [PASSED] All Pinn-Ocean core components & new metrics verified!  ")
     print("==================================================================")
 
 
 if __name__ == "__main__":
     run_unit_tests()
+

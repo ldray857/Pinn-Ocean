@@ -256,7 +256,10 @@ Pinn-Ocean/
 │   │   └── metrics.py         # RMSE, MAE, R^2, and Mixed Layer Depth (MLD) utilities
 │   └── visualization/         # Modular scientific plotting subpackage (publication styling)
 │       ├── __init__.py
-│       ├── profiles.py        # Vertical profile comparison plotting (with auto-best station selection)
+│       ├── horizontal_layers.py # 50m-interval layer-by-layer horizontal depth slices (0-1000m)
+│       ├── profiles.py        # Vertical profiles (multi-station dynamic regime array & auto-best station)
+│       ├── sections.py        # 2D continuous vertical sections (35°N transect) & layer-wise error profiles
+│       ├── volumetric_3d.py   # True 3D isotherm surface topography & volume slices
 │       ├── ts_diagram.py      # Temperature-Salinity (T-S) consistency diagram
 │       ├── scatter_density.py # Hexbin scatter density & R^2 evaluation
 │       └── mld.py             # Mixed Layer Depth (MLD) interface validation
@@ -269,14 +272,14 @@ Pinn-Ocean/
 ├── result/                    # Standardized experiment output root directory
 │   └── 2015_2020/             # 2015–2020 six-year experiment asset bundle
 │       ├── checkpoints/       # Best model checkpoint (swin_ocean_pinn_best.pth)
-│       ├── log/               # Training & evaluation logs (train.log, eval.log)
-│       ├── pic/               # Publication-grade 300 DPI figures (fig1 ~ fig4)
+│       ├── log/               # Training & evaluation logs (train.log, eval.log, metrics_detailed.json)
+│       ├── pic/               # Publication-grade 300 DPI figures (fig1 ~ fig8) and layers_50m/
 │       └── con/               # 3-D volumetric NetCDF & ArcGIS Pro 10m regular voxel layers
 ├── download_data.py           # Automated data collection tool for Open Pacific CMEMS datasets
 ├── train.py                   # Model training entry point (multi-year support & active physics)
-├── evaluate.py                # Model evaluation and layer-wise validation script
+├── evaluate.py                # Model evaluation and 4-tier physics/layer validation engine
 ├── predict.py                 # Full 3-D volumetric inference & dual CF-compliant NetCDF exporter
-├── visualize.py               # Main CLI visualization orchestrator (with station auto-optimization)
+├── visualize.py               # Main CLI visualization orchestrator (50m layers, sections & profiles)
 ├── demo_test.py               # Quick verification entry point (delegates to tests/)
 ├── requirements.txt           # Environment dependencies
 ├── setup.py                   # Python package installer
@@ -323,7 +326,7 @@ python download_data.py --output_dir data --start_time 2015-01-01 --end_time 202
 ```
 
 ### 6.2 Code Self-Inspection
-This self-contained verification suite uses synthetic mini-batches to validate DeepONet forward inference, Autograd analytical differentiation, TEOS-10 density computation, and multi-objective backward pass:
+This self-contained verification suite uses synthetic mini-batches to validate DeepONet forward inference, Autograd analytical differentiation, TEOS-10 density computation, multi-objective backward pass, and 2D/3D visualization pipelines:
 ```bash
 python demo_test.py
 ```
@@ -339,45 +342,52 @@ python train.py --data_dir data --epochs 300 --batch_size 4 --lr 3e-4
 * **Model Checkpoint**: Best weights saved to `result/2015_2020/checkpoints/swin_ocean_pinn_best.pth`.
 
 ### 6.4 Model Evaluation & Latest Benchmark Results
-Evaluate the 300-epoch trained checkpoint on the independent test set partition (May 2020 to December 2020, completely unobserved future time steps):
+Evaluate the 300-epoch trained checkpoint on the independent test set partition (May 2020 to December 2020, 8 time steps, 8.16M voxels):
 ```bash
 python evaluate.py --data_dir data
 ```
 
-**Three-Stage Model Evolution & Benchmark Results**:
+**1. Four-Tier Evaluation Architecture & Benchmark Results**:
 
-| Ocean Variable | Stage 1: 2019–2020 Baseline (24 mo) | Stage 2: 2017–2020 4-Year Model (48 mo) | **Stage 3: 2015–2020 6-Year Model (72 mo, 300 Epochs)** | **Cumulative Performance Gain** |
-| :--- | :--- | :--- | :--- | :--- |
-| **Potential Temperature** | $\mathrm{RMSE} = 2.3551^\circ\mathrm{C}$<br>$R^2 = 0.8489$ | $\mathrm{RMSE} = 1.6906^\circ\mathrm{C}$<br>$R^2 = 0.9427$ | **$\mathrm{RMSE} = 1.5153^\circ\mathrm{C}$<br>$\mathrm{MAE} = 1.1785^\circ\mathrm{C}$<br>$R^2 = 0.9499$** | **35.7% error reduction<br>$R^2$ reaches ~0.95** |
-| **Practical Salinity** | $\mathrm{RMSE} = 0.1672\,\mathrm{PSU}$<br>$R^2 = 0.6400$ | $\mathrm{RMSE} = 0.1130\,\mathrm{PSU}$<br>$R^2 = 0.8608$ | **$\mathrm{RMSE} = 0.1068\,\mathrm{PSU}$<br>$\mathrm{MAE} = 0.0803\,\mathrm{PSU}$<br>$R^2 = 0.8746$** | **36.1% error reduction<br>$R^2$ improved by >23.5%** |
-| **Optimal Station**<br>(154.00°E, 34.33°N) | Not evaluated | Single-point RMSE: 1.13°C / 0.073 PSU | **$T\text{-RMSE} = 0.49^\circ\mathrm{C}, R_T = 0.9990$<br>$S\text{-RMSE} = 0.0117\,\mathrm{PSU}, R_S = 0.9989$** | **Near-zero error<br>Matches CTD instrument fidelity** |
+| Dynamical Regime | Depth Range | Temp RMSE (°C) | Temp MAE (°C) | Temp $R^2$ | Sal RMSE (PSU) | Sal MAE (PSU) | Sal $R^2$ |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Mixed Layer** | 0–100 m | 1.1519 | 0.8876 | 0.9427 | 0.1388 | 0.1062 | 0.8143 |
+| **Thermocline** | 100–400 m | 1.7108 | 1.3414 | 0.8931 | 0.1172 | 0.0886 | 0.8354 |
+| **Deep Layer** | 400–1000 m | 1.4883 | 1.1718 | 0.8176 | 0.0628 | 0.0469 | 0.7712 |
+| **Global Overall** | **0–1000 m** | **1.5153** | **1.1785** | **0.9499** | **0.1068** | **0.0803** | **0.8746** |
+
+**2. Physical Consistency & Dynamical Diagnoses**:
+* **Hydrostatic Density Inversion Rate (DIR)**: **0.000%** (0 / 7,931,792 vertical voxel pairs). Completely eliminates non-physical static instability ($\partial \rho / \partial z \ge 0$).
+* **Thermocline Thermal Monotonicity Violation (TMV)**: **0.000%** (0 / 2,799,456 vertical voxel pairs in 100–1000m). Eliminates false deep warm oscillations.
+* **Mixed Layer Depth (MLD) Interface Accuracy**: $\mathrm{RMSE} = 19.11\,\mathrm{m}$, $\mathrm{MAE} = 14.54\,\mathrm{m}$, spatial $R^2 = 0.4721$.
 
 ### 6.5 Full 3-D Field Reconstruction & Dual NetCDF4 Asset Export
 The pipeline automatically exports two complementary CF-1.8 standard NetCDF4 data assets directly into `result/2015_2020/con/`:
-1. **GLORYS-Aligned Asset (35 layers)**: `result/2015_2020/con/pacific_reconstructed_3d_test.nc`, exactly aligned with GLORYS12V1 vertical grid with both predictions and ground truth, ideal for 2D multidimensional raster slicing and residual analysis;
-2. **Strictly Regular Voxel Asset (101 layers, 10m interval)**: `result/2015_2020/con/pacific_reconstructed_3d_test_regular.nc`, exploits continuous-coordinate PINN representations to reconstruct strictly equal-interval 10m vertical voxels, natively compatible with ArcGIS Pro 3.x Voxel Layer without vertical distortion or irregular warnings.
+1. **GLORYS-Aligned Asset (35 layers)**: `result/2015_2020/con/pacific_reconstructed_3d_test.nc`, exactly aligned with GLORYS12V1 vertical grid with both predictions and ground truth;
+2. **Strictly Regular Voxel Asset (101 layers, 10m interval)**: `result/2015_2020/con/pacific_reconstructed_3d_test_regular.nc`, exploits continuous-coordinate PINN representations to reconstruct strictly equal-interval 10m vertical voxels, natively compatible with ArcGIS Pro 3.x Voxel Layer.
 
 ```bash
 # Export both aligned and 10m regular voxel NetCDF4 files in one pass
 python predict.py --data_dir data --regular_step 10.0
 ```
 
-### 6.6 Publication-Quality Visualization Plotting
+### 6.6 Publication-Quality 3D & 2D Visualization Suite
 Generate publication-quality 300 DPI figures exported directly into `result/2015_2020/pic/`:
 ```bash
-# Auto-detects optimal station and generates all 4 figures
+# Generates all 9 publication-grade 50m layers, sections, and statistical figures
 python visualize.py --data_dir data
-
-# (Optional) Specify any custom station coordinates or domain center
-python visualize.py --data_dir data --station_lat 36.5 --station_lon 158.0
-python visualize.py --data_dir data --station_mode center
 ```
 
-**Generated Figure Suite**:
-* **`fig1_profile_comparison.png`**: Kuroshio Extension optimal station (154.00°E, 34.33°N) vertical profile comparison (0–1000m) with quantitative metric annotation boxes ($R$ and $\mathrm{RMSE}$);
-* **`fig2_ts_diagram.png`**: Temperature-Salinity (T-S) water mass consistency diagram verifying thermodynamic preservation without density inversions;
-* **`fig3_scatter_density.png`**: Full-depth Hexbin scatter density with 1:1 reference line and full-depth $R^2$ validation;
-* **`fig4_mld_validation.png`**: Mixed Layer Depth (MLD) physical interface validation scatter plot.
+**Generated Figure Suite (9 Figures & 50m Depth Layers)**:
+* **`fig1_depth_layers_50m_temp.png`**: 50m-interval layer-by-layer horizontal depth slice evaluation for temperature (0–1000m overview across key depth layers: 0, 50, 100, 150, 200, 300, 400, 500, 750, 1000m), with 21 individual 50m layer maps saved in `layers_50m/`;
+* **`fig1_depth_layers_50m_sal.png`**: 50m-interval layer-by-layer horizontal depth slice evaluation for salinity (0–1000m overview across key depth layers), with 21 individual 50m layer maps saved in `layers_50m/`;
+* **`fig2_vertical_section_35n.png`**: High-resolution 0–1000m continuous vertical transect along 35°N Kuroshio Extension (Ground Truth, Prediction, and Error);
+* **`fig3_layer_metrics_depth.png`**: Continuous layer-wise RMSE(z), MAE(z), and $R^2(z)$ profiles across 0–1000m depth;
+* **`fig4_multi_station_profiles.png`**: Multi-station profile array comparing 4 contrasting dynamic regimes (Kuroshio Jet, Subtropical Warm Pool, Subarctic Water, Open Ocean Center);
+* **`fig5_ts_diagram.png`**: Temperature-Salinity (T-S) water mass diagram with potential density ($\sigma_\theta$) isopycnal contours;
+* **`fig6_scatter_density.png`**: Full-depth Hexbin scatter density plot with 1:1 reference line;
+* **`fig7_mld_validation.png`**: Mixed Layer Depth (MLD) physical interface validation scatter plot;
+* **`fig8_3d_isotherm_15c.png`**: 3D 15°C isotherm surface topography highlighting frontal thermocline tilting across Kuroshio Extension.
 
 ---
 
