@@ -396,7 +396,35 @@ python visualize.py --mode test --years 2015 2016 2017 2018 2019 2020 --all
 * **`fig7_mld_validation.png`**: Mixed Layer Depth (MLD) physical interface validation scatter plot;
 * **`fig8_3d_isotherm_15c.png`**: 3D 15°C isotherm surface topography highlighting frontal thermocline tilting across Kuroshio Extension.
 
+### 6.7 GLORYS 3-D Continuous Super-Resolution & Spatial Downscaling
+Empowered by continuous Fourier depth embeddings and sub-pixel neural decoding, the framework supports arbitrary horizontal downscaling (e.g. 2x, 4x from 1/12° to 1/24° or 1/48°) and arbitrary vertical regular voxel interpolation (e.g. 10m or 5m intervals):
+
+```bash
+# Run 2x horizontal super-resolution and 10m regular voxel reconstruction
+python super_resolve.py --years 2015 2016 2017 2018 2019 2020 --mode test --scale_factor 2.0 --depth_step 10.0 --method pinn
+
+# Or directly enable super-resolution export in predict.py
+python predict.py --mode test --years 2015 2016 2017 2018 2019 2020 --super_res_scale 2.0
+```
+* **Output Asset**: Saved to `result/<year_tag>/con/pacific_glorys_super_res_3d_pinn_test.nc`, natively tailored for ArcGIS Pro 3.x Voxel Layer rendering.
+
+### 6.8 Multi-Model Academic Superiority Benchmark Suite
+Evaluates 4 contrasting paradigms: 3-D Trilinear Interpolation, Pure-CNN (2D CNN without physics), Pure-Swin (Ablation without physics loss), and Swin-Ocean-PINN (Our complete model), generating structured reports and 4 publication-grade comparative figures:
+
+```bash
+# Execute multi-model benchmark evaluation
+python benchmark.py --years 2015 2016 2017 2018 2019 2020 --mode test
+```
+
+**Benchmark Visualization Artifacts** (saved in `result/<year_tag>/pic/`):
+* **`fig_superiority_radar.png`**: Multi-model 6-dimensional superiority radar chart;
+* **`fig_physics_stability_transect.png`**: 35°N Kuroshio vertical transect stability & convective instability patch ($N^2 < 0$) overlay;
+* **`fig_glorys_super_resolution_comparison.png`**: High-resolution super-resolution comparison with mesoscale eddy inset zoom;
+* **`fig_superiority_bar_summary.png`**: Key metric error reduction & ablation improvement bar summary;
+* **Reports**: `result/<year_tag>/log/benchmark_summary.json` and `benchmark_report.md`.
+
 ---
+
 
 ## 7. Citation
 

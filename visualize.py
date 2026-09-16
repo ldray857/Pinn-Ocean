@@ -97,7 +97,12 @@ def parse_args():
         "--all", action="store_true", default=True,
         help="Generate all 9 publication-grade figures (default: True)"
     )
+    parser.add_argument(
+        "--benchmark", action="store_true", default=False,
+        help="Also execute multi-model superiority benchmark and generate 4 comparative figures"
+    )
     return parser.parse_args()
+
 
 
 def run_visualization():
@@ -342,6 +347,12 @@ def run_visualization():
     print(f"           {os.path.abspath(out_dir)}/")
     print("=" * 75)
 
+    if args.benchmark:
+        print("\nExecuting multi-model superiority benchmark suite (--benchmark enabled)...")
+        from benchmark import run_benchmark
+        run_benchmark()
+
 
 if __name__ == "__main__":
     run_visualization()
+
