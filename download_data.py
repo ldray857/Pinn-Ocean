@@ -15,6 +15,18 @@ import argparse
 from datetime import datetime
 from typing import Optional, List
 
+# Pre-import HDF5 and NetCDF backends to ensure Windows dynamic linker pre-loads DLLs
+# before copernicusmarine network operations, preventing downstream h5netcdf DLL load errors
+try:
+    import h5py  # noqa: F401
+except ImportError:
+    pass
+try:
+    import netCDF4  # noqa: F401
+except ImportError:
+    pass
+
+
 
 # Default Open Pacific bounding box (100% deep ocean, zero land points)
 DEFAULT_MIN_LON = 145.0
